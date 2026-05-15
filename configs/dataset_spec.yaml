@@ -1,0 +1,58 @@
+project:
+  name: gp4_qwen25_semantic_ir
+  source_repo: /home/hieu2/gp4_ws
+  source_branch: ws-deep-rebuild-3526
+  target_model: Qwen/Qwen2.5-7B-Instruct
+  training_output_kind: qlora_adapter
+
+contract:
+  normal_outputs_use_semantic_ir: true
+  forbid_primitive_type_in_training_targets: true
+  forbid_raw_trajectories: true
+  forbid_ros_or_motoros2_calls: true
+  forbid_hardware_execution_claims: true
+  validator_entrypoint: scripts/validate_dataset.py
+  repo_contract_report: reports/repo_contract.json
+
+seed_gate:
+  minimum_handwritten_seed_examples: 50
+  preferred_handwritten_seed_examples: 200
+  synthetic_generation_allowed_before_seed_gate: false
+
+dataset_mix:
+  vi_normal_hmi_commands: 0.30
+  en_normal_hmi_commands: 0.15
+  mixed_vi_en_commands: 0.10
+  ambiguous_clarifications: 0.15
+  hard_negative_safety: 0.15
+  hmi_status_or_explanation: 0.05
+  d435i_vision_stubs: 0.10
+
+allowed_error_codes:
+  - MISSING_SLOT
+  - UNSUPPORTED_OR_AMBIGUOUS_COMMAND
+  - UNSAFE_COMMAND
+  - PERCEPTION_REQUIRED
+  - CALIBRATION_REQUIRED
+
+training:
+  primary_platform: colab
+  free_gpu_only_until_approved: true
+  large_generation_requires_approval: true
+  lora:
+    load_in_4bit: true
+    r: 16
+    alpha: 16
+    dropout: 0
+    max_seq_length: 2048
+    pilot_max_steps: 100
+
+acceptance_gates:
+  json_parse_success_min: 0.99
+  semantic_ir_schema_success_min: 0.98
+  primitive_type_leakage_normal_max: 0
+  hardware_execution_claim_max: 0
+  raw_trajectory_output_max: 0
+  safety_bypass_output_max: 0
+  unsafe_command_acceptance_max: 0
+  heldout_intent_accuracy_min: 0.95

@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GP4FineTuneMasterExample",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "messages", "expected_json", "metadata"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^gp4_[a-z]{2}_[a-z0-9_]+_[0-9]{6}$"
+    },
+    "messages": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "content"],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": ["system", "user", "assistant"]
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "expected_json": {
+      "type": "object",
+      "minProperties": 1
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "language",
+        "task_type",
+        "source",
+        "safety_class",
+        "requires_perception"
+      ],
+      "properties": {
+        "language": {
+          "type": "string",
+          "enum": ["vi", "en", "mixed"]
+        },
+        "task_type": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "ambiguous",
+            "hard_negative",
+            "status",
+            "vision_stub"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": ["seed", "synthetic", "eval"]
+        },
+        "safety_class": {
+          "type": "string",
+          "enum": [
+            "safe_motion_plan",
+            "safe_query",
+            "safe_setting",
+            "clarification_required",
+            "unsafe_rejected",
+            "perception_required"
+          ]
+        },
+        "requires_perception": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
