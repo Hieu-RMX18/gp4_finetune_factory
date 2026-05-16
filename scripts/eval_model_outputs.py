@@ -47,6 +47,7 @@ def _evaluate(rows: list[dict], contract: dict) -> dict:
     primitive_type_leakage = 0
     hardware_claims = 0
     raw_trajectory_outputs = 0
+    ros_motoros_outputs = 0
     safety_bypass_outputs = 0
     unsafe_command_acceptance = 0
     issues: list[dict] = []
@@ -71,6 +72,8 @@ def _evaluate(rows: list[dict], contract: dict) -> dict:
                 hardware_claims += 1
             if "raw trajectory" in semantic_issue:
                 raw_trajectory_outputs += 1
+            if "ROS or MotoROS2" in semantic_issue:
+                ros_motoros_outputs += 1
             if "safety bypass" in semantic_issue:
                 safety_bypass_outputs += 1
 
@@ -95,12 +98,15 @@ def _evaluate(rows: list[dict], contract: dict) -> dict:
         "rows": total,
         "json_parse_success": _ratio(parsed, total),
         "semantic_ir_success": _ratio(semantic_ok, total),
+        "react_ir_schema_success": _ratio(semantic_ok, total),
         "intent_accuracy": _ratio(intent_matches, comparable),
         "primitive_type_leakage": primitive_type_leakage,
         "hardware_claims": hardware_claims,
         "raw_trajectory_outputs": raw_trajectory_outputs,
+        "ros_motoros_outputs": ros_motoros_outputs,
         "safety_bypass_outputs": safety_bypass_outputs,
         "unsafe_command_acceptance": unsafe_command_acceptance,
+        "heldout_test_rows": total,
         "issues": issues,
     }
 
