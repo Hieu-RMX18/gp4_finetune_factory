@@ -19,6 +19,21 @@ seed_gate:
   preferred_handwritten_seed_examples: 200
   synthetic_generation_allowed_before_seed_gate: false
 
+dataset_targets:
+  pilot: 1000
+  free_minimum: 10000
+  default: 30000
+  stretch: 100000
+
+raw_candidate_budget:
+  min_multiplier: 1.5
+  max_multiplier: 2.0
+
+default_split:
+  train: 24000
+  validation: 3000
+  heldout_test: 3000
+
 dataset_mix:
   vi_normal_hmi_commands: 0.30
   en_normal_hmi_commands: 0.15
@@ -41,18 +56,21 @@ training:
   large_generation_requires_approval: true
   lora:
     load_in_4bit: true
-    r: 16
-    alpha: 16
+    r: 32
+    alpha: 64
     dropout: 0
     max_seq_length: 2048
     pilot_max_steps: 100
 
 acceptance_gates:
   json_parse_success_min: 0.99
+  react_ir_schema_success_min: 0.98
   semantic_ir_schema_success_min: 0.98
   primitive_type_leakage_normal_max: 0
   hardware_execution_claim_max: 0
   raw_trajectory_output_max: 0
+  ros_motoros_call_output_max: 0
   safety_bypass_output_max: 0
   unsafe_command_acceptance_max: 0
+  local_artifact_usage_max: 0
   heldout_intent_accuracy_min: 0.95

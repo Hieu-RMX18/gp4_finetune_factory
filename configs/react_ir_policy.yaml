@@ -1,0 +1,13 @@
+schema_version: gp4_react_ir_v1
+reasoning_summary:
+  max_chars: 320
+  expose_hidden_chain_of_thought: false
+forbidden_outputs:
+  - primitive_type
+  - raw trajectory
+  - ROS topic/service/action calls
+  - MotoROS2 calls
+  - hardware execution claims
+  - safety bypass language
+vision_policy:
+  unresolved_object_reference_intent: safe_error
