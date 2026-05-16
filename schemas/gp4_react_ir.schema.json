@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GP4ReActIR",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "observe", "reasoning_summary", "act", "safety"],
+  "properties": {
+    "schema_version": {
+      "const": "gp4_react_ir_v1"
+    },
+    "observe": {
+      "type": "object"
+    },
+    "reasoning_summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 320
+    },
+    "act": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["intent"],
+      "properties": {
+        "intent": {
+          "type": "string",
+          "enum": [
+            "home",
+            "ptp",
+            "lin",
+            "move_relative",
+            "move_joint",
+            "move_joints",
+            "set_speed",
+            "get_pose",
+            "wait",
+            "stop",
+            "sequence",
+            "draw_shape",
+            "io_set",
+            "alarm_reset",
+            "safe_error"
+          ]
+        },
+        "error_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["requires_validation", "hardware_execution_claim"],
+      "properties": {
+        "requires_validation": {
+          "type": "boolean"
+        },
+        "requires_planning_scene": {
+          "type": "boolean"
+        },
+        "hardware_execution_claim": {
+          "const": false
+        }
+      }
+    }
+  }
+}
