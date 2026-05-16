@@ -89,20 +89,26 @@ def _run_dry_phase(phase: str, context: dict[str, Any]) -> dict[str, Any]:
                 "blocked_reason": "" if passed else "seed gate blocked generation",
             },
         )
+        context["seed_gate_passed"] = passed
         return {"name": phase, "status": "passed" if passed else "blocked", "report": str(report)}
 
     if phase == "generate":
         report = reports_dir / f"generation_report_{run_id}.json"
+        seed_gate_passed = bool(context.get("seed_gate_passed", False))
         write_json(
             report,
             {
-                "passed": False,
+                "passed": seed_gate_passed,
                 "dry_run": True,
                 "generated": 0,
-                "blocked_reason": "seed gate blocked generation",
+                "blocked_reason": "" if seed_gate_passed else "seed gate blocked generation",
             },
         )
-        return {"name": phase, "status": "blocked", "report": str(report)}
+        return {
+            "name": phase,
+            "status": "passed" if seed_gate_passed else "blocked",
+            "report": str(report),
+        }
 
     if phase == "quality-gate":
         report = reports_dir / f"validation_report_{run_id}.json"

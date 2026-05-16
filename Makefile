@@ -65,6 +65,12 @@ eval:
 gates:
 	$(PYTHON) scripts/check_acceptance_gates.py --eval-report reports/eval_report.json --min-rows $(HELDOUT_MIN)
 
+cloud-dry-run:
+	$(PYTHON) scripts/cloud_orchestrator.py --run-id dryrun --cloud-root /tmp/gp4_finetune_factory_cloud_test --seed data/seed/gp4_seed_starter.jsonl --phases provider-probe,contract,seed-check,generate,quality-gate,dedupe,split,eval,package --dry-run --allow-tmp
+
+validate-react-ir:
+	$(PYTHON) scripts/validate_react_ir_dataset.py --input data/seed/*.jsonl --strict --report /tmp/gp4_finetune_factory_validation_report.json --allow-tmp
+
 retrain-bundle:
 	$(PYTHON) scripts/build_retrain_bundle.py --output $(BUNDLE)
 

@@ -6,6 +6,12 @@ The model is not a robot controller. Training targets must only produce Semantic
 
 `HMI -> llm_gateway -> validator -> safety -> motion_core -> hw_adapter -> MotoROS2`
 
+## Cloud-Only Runtime Policy
+
+Runtime datasets, reports, checkpoints, adapters, inference outputs, and final
+packages must be written to Google Drive or approved cloud storage. The local
+repo is for source code, tests, configs, schemas, and notebook templates only.
+
 ## Safety Contract
 
 - No training target may contain `primitive_type`; that is reserved for the raw/backward-compatible path.
