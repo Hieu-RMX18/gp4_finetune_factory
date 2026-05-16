@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
-from factory_common import SEMANTIC_IR_SYSTEM_PROMPT, read_jsonl, write_jsonl
+from factory_common import SEMANTIC_IR_SYSTEM_PROMPT, read_jsonl, write_json, write_jsonl
 
 
 def main() -> int:
@@ -14,6 +14,7 @@ def main() -> int:
     )
     parser.add_argument("--input", type=Path, nargs="+", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--report", type=Path)
     args = parser.parse_args()
 
     rows = []
@@ -29,6 +30,11 @@ def main() -> int:
         kept.append(_normalize_system_prompt(row))
 
     write_jsonl(args.output, kept)
+    if args.report:
+        write_json(
+            args.report,
+            {"rows": len(rows), "kept": len(kept), "dropped": len(rows) - len(kept)},
+        )
     print(f"rows={len(rows)} kept={len(kept)} dropped={len(rows) - len(kept)} output={args.output}")
     return 0
 

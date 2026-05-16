@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import random
 from collections import Counter
 from pathlib import Path
@@ -16,12 +17,19 @@ def main() -> int:
     )
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, default=Path("data/splits"))
+    parser.add_argument("--locked-eval", type=Path)
+    parser.add_argument("--report", type=Path)
     parser.add_argument("--seed", type=int, default=20260515)
     parser.add_argument("--train-ratio", type=float, default=0.80)
     parser.add_argument("--val-ratio", type=float, default=0.10)
     args = parser.parse_args()
 
     rows = read_jsonl(args.input)
+    if args.locked_eval:
+        contamination = _find_locked_eval_contamination(rows, read_jsonl(args.locked_eval))
+        if contamination:
+            print(f"locked eval contamination: {contamination[0]}")
+            return 1
     if not 0 < args.train_ratio < 1:
         raise ValueError("--train-ratio must be between 0 and 1")
     if not 0 <= args.val_ratio < 1:
@@ -49,6 +57,19 @@ def main() -> int:
     write_jsonl(args.output_dir / "train.jsonl", train_rows)
     write_jsonl(args.output_dir / "val.jsonl", val_rows)
     write_jsonl(args.output_dir / "test.jsonl", test_rows)
+    if args.report:
+        from factory_common import write_json
+
+        write_json(
+            args.report,
+            {
+                "rows": len(rows),
+                "train": len(train_rows),
+                "validation": len(val_rows),
+                "test": len(test_rows),
+                "locked_eval_contamination": 0,
+            },
+        )
     print(
         f"rows={len(rows)} train={len(train_rows)} val={len(val_rows)} "
         f"test={len(test_rows)} output_dir={args.output_dir}"
@@ -118,6 +139,31 @@ def _expected_label(row: dict[str, Any]) -> tuple[str, str]:
     if isinstance(error, str) and error:
         return ("error", error)
     return ("unknown", str(row.get("id", "")))
+
+def _find_locked_eval_contamination(
+    rows: list[dict[str, Any]],
+    locked_eval_rows: list[dict[str, Any]],
+) -> list[str]:
+    locked_keys = {_contamination_key(row) for row in locked_eval_rows}
+    return [
+        str(row.get("id", "<missing-id>"))
+        for row in rows
+        if _contamination_key(row) in locked_keys
+    ]
+
+def _contamination_key(row: dict[str, Any]) -> str:
+    user_content = ""
+    for message in row.get("messages", []):
+        if isinstance(message, dict) and message.get("role") == "user":
+            user_content = str(message.get("content", "")).strip().lower()
+            break
+    target = json.dumps(
+        row.get("expected_json", {}),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return f"{user_content}\n{target}"
 
 
 if __name__ == "__main__":
