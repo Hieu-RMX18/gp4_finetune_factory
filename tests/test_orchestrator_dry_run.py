@@ -35,3 +35,44 @@ def test_generate_batch_deepseek_dry_run_respects_seed_gate(tmp_path: Path) -> N
     assert result.returncode == 1
     payload = json.loads(report.read_text(encoding="utf-8"))
     assert payload["blocked_reason"] == "seed gate blocked generation"
+
+
+def test_orchestrator_tiny_dry_run_writes_manifest_and_failing_acceptance(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "drive" / "gp4_finetune_factory"
+    seed = tmp_path / "seed.jsonl"
+    seed.write_text("", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/cloud_orchestrator.py",
+            "--run-id",
+            "dryrun",
+            "--cloud-root",
+            str(cloud_root),
+            "--seed",
+            str(seed),
+            "--phases",
+            "provider-probe,contract,seed-check,generate,quality-gate,dedupe,split,eval,package",
+            "--dry-run",
+            "--allow-tmp",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    manifest = json.loads(
+        (cloud_root / "reports" / "run_manifest_dryrun.json").read_text(encoding="utf-8")
+    )
+    gate = json.loads(
+        (cloud_root / "reports" / "acceptance_gate_report_dryrun.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert manifest["run_id"] == "dryrun"
+    assert gate["passed"] is False
