@@ -1,0 +1,12 @@
+deepseek:
+  base_url: https://api.deepseek.com
+  model: deepseek-v4-flash
+  api_key_env: DEEPSEEK_API_KEY
+  temperature: 0.4
+  max_tokens: 7000
+candidate_budget:
+  multiplier_min: 1.5
+  multiplier_max: 2.0
+batch:
+  default_size: 50
+  retry_limit: 4
