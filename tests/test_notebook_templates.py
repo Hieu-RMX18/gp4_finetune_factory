@@ -28,6 +28,7 @@ def test_colab_notebook_loads_optional_provider_secrets() -> None:
     assert "from google.colab import userdata" in secret_source
     assert "'DEEPSEEK_API_KEY'" in secret_source
     assert "userdata.get(secret_name)" in secret_source
+    assert "except Exception" in secret_source
     assert "'OPENAI_BASE_URL'" in secret_source
     assert "Set DEEPSEEK_API_KEY or OPENAI_BASE_URL" not in secret_source
     assert "os.environ['OPENAI_MODEL'] = os.environ.get('OPENAI_MODEL', 'gpt-5.4')" in secret_source
