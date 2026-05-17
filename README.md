@@ -23,7 +23,7 @@ libraries are imported.
 - Ambiguous, unsafe, unknown IO, or unverified D435i object commands must become safe error payloads.
 - Synthetic generation is blocked until at least 50 handwritten seed rows pass strict validation.
 - API keys and platform tokens must stay in environment variables or platform secret managers, never in source files.
-- DeepSeek generation uses `DEEPSEEK_API_KEY` with `DEEPSEEK_BASE_URL=https://api.deepseek.com`; `OPENAI_API_KEY` is not a DeepSeek fallback.
+- DeepSeek generation uses `DEEPSEEK_API_KEY` with `DEEPSEEK_BASE_URL=https://api.deepseek.com`. If DeepSeek fails, the generator can fall back to an OpenAI-compatible 9router endpoint from `OPENAI_BASE_URL` with `OPENAI_MODEL=gpt-5.4`.
 
 ## First-Wave Workflow
 

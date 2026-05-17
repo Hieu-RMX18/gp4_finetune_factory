@@ -33,6 +33,13 @@ class DeepSeekConfig:
     temperature: float
     max_tokens: int
 
+@dataclass(frozen=True)
+class FallbackConfig:
+    base_url: str
+    model: str
+    api_key_env: str
+    api_key: str
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate GP4 ReAct-IR rows with DeepSeek.")
@@ -110,6 +117,8 @@ def main() -> int:
         return 1
 
     generation_policy = read_yaml(GENERATION_POLICY_PATH)
+    fallback = resolve_9router_fallback_config(generation_policy, env=os.environ)
+    deepseek: DeepSeekConfig | None = None
     try:
         deepseek = resolve_deepseek_config(
             generation_policy,
@@ -117,10 +126,24 @@ def main() -> int:
             dry_run=args.dry_run,
         )
     except DeepSeekProviderError as exc:
+        if fallback:
+            deepseek = None
+        else:
+            report = _report(
+                args.report,
+                passed=False,
+                blocked_reason=str(exc),
+                seed_rows=len(seed_rows),
+                generated=0,
+            )
+            print(f"blocked_reason={report['blocked_reason']} report={args.report}")
+            return 1
+
+    if deepseek is None and fallback is None:
         report = _report(
             args.report,
             passed=False,
-            blocked_reason=str(exc),
+            blocked_reason="no generation provider is configured",
             seed_rows=len(seed_rows),
             generated=0,
         )
@@ -134,20 +157,26 @@ def main() -> int:
             blocked_reason="",
             seed_rows=len(seed_rows),
             generated=0,
-            model=deepseek.model,
+            model=deepseek.model if deepseek else None,
             dry_run=True,
         )
-        print(f"dry_run_ok seed_rows={len(seed_rows)} model={deepseek.model} report={args.report}")
+        active_model = deepseek.model if deepseek else fallback.model
+        print(f"dry_run_ok seed_rows={len(seed_rows)} model={active_model} report={args.report}")
         return 0
 
     rows = _generate_rows(
-        api_key=deepseek.api_key,
-        base_url=deepseek.base_url,
-        model=deepseek.model,
+        api_key=deepseek.api_key if deepseek else "",
+        base_url=deepseek.base_url if deepseek else "",
+        model=deepseek.model if deepseek else "",
         seed_rows=seed_rows,
         count=args.count,
-        temperature=deepseek.temperature,
-        max_tokens=deepseek.max_tokens,
+        temperature=deepseek.temperature if deepseek else float(generation_policy["deepseek"]["temperature"]),
+        max_tokens=deepseek.max_tokens if deepseek else int(generation_policy["deepseek"]["max_tokens"]),
+        batch_size=int(generation_policy["batch"]["default_size"]),
+        retry_limit=int(generation_policy["batch"]["retry_limit"]),
+        fallback_api_key=fallback.api_key if fallback else "",
+        fallback_base_url=fallback.base_url if fallback else "",
+        fallback_model=fallback.model if fallback else "",
     )
     write_jsonl(args.output, rows)
     _report(
@@ -156,7 +185,8 @@ def main() -> int:
         blocked_reason="",
         seed_rows=len(seed_rows),
         generated=len(rows),
-        model=deepseek.model,
+        model=deepseek.model if deepseek else None,
+        fallback_model=fallback.model if fallback else None,
     )
     print(f"generated={len(rows)} output={args.output} report={args.report}")
     return 0
@@ -189,6 +219,27 @@ def resolve_deepseek_config(
         max_tokens=int(deepseek["max_tokens"]),
     )
 
+def resolve_9router_fallback_config(
+    generation_policy: dict[str, Any],
+    *,
+    env: Mapping[str, str],
+) -> FallbackConfig | None:
+    fallback = generation_policy.get("fallback_9router", {})
+    if not fallback.get("enabled", False):
+        return None
+    base_url_env = str(fallback.get("base_url_env", "OPENAI_BASE_URL"))
+    model_env = str(fallback.get("model_env", "OPENAI_MODEL"))
+    api_key_env = str(fallback.get("api_key_env", "OPENAI_API_KEY"))
+    base_url = env.get(base_url_env, "").strip()
+    if not base_url:
+        return None
+    return FallbackConfig(
+        base_url=base_url.rstrip("/"),
+        model=env.get(model_env, str(fallback.get("default_model", "gpt-5.4"))),
+        api_key_env=api_key_env,
+        api_key=env.get(api_key_env, ""),
+    )
+
 
 def _validate_base_url(base_url: str, *, dry_run: bool) -> None:
     parsed = urlparse(base_url)
@@ -209,12 +260,102 @@ def _report(path: Path, **values: Any) -> dict[str, Any]:
         "generated": int(values.get("generated", 0)),
         "dry_run": bool(values.get("dry_run", False)),
         "model": values.get("model"),
+        "fallback_model": values.get("fallback_model"),
     }
     write_json(path, payload)
     return payload
 
 
 def _generate_rows(
+    *,
+    api_key: str,
+    base_url: str,
+    model: str,
+    seed_rows: list[dict[str, Any]],
+    count: int,
+    temperature: float,
+    max_tokens: int,
+    batch_size: int = 50,
+    retry_limit: int = 4,
+    fallback_api_key: str = "",
+    fallback_base_url: str = "",
+    fallback_model: str = "",
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    while len(rows) < count:
+        requested_rows = min(batch_size, count - len(rows))
+        batch_rows = _generate_rows_batch(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            seed_rows=seed_rows,
+            count=requested_rows,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            retry_limit=retry_limit,
+            fallback_api_key=fallback_api_key,
+            fallback_base_url=fallback_base_url,
+            fallback_model=fallback_model,
+        )
+        rows.extend(batch_rows[:requested_rows])
+    return rows[:count]
+
+def _generate_rows_batch(
+    *,
+    api_key: str,
+    base_url: str,
+    model: str,
+    seed_rows: list[dict[str, Any]],
+    count: int,
+    temperature: float,
+    max_tokens: int,
+    retry_limit: int,
+    fallback_api_key: str,
+    fallback_base_url: str,
+    fallback_model: str,
+) -> list[dict[str, Any]]:
+    providers = []
+    if base_url and model:
+        providers.append(
+            {
+                "name": "deepseek",
+                "api_key": api_key,
+                "base_url": base_url,
+                "model": model,
+            }
+        )
+    if fallback_base_url and fallback_model:
+        providers.append(
+            {
+                "name": "9router",
+                "api_key": fallback_api_key,
+                "base_url": fallback_base_url,
+                "model": fallback_model,
+            }
+        )
+
+    last_error = ""
+    for _attempt in range(max(1, retry_limit)):
+        for provider in providers:
+            try:
+                rows = _request_provider_rows(
+                    api_key=provider["api_key"],
+                    base_url=provider["base_url"],
+                    model=provider["model"],
+                    seed_rows=seed_rows,
+                    count=count,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            except Exception as exc:
+                last_error = f"{provider['name']}: {exc}"
+                continue
+            if rows:
+                return rows
+            last_error = f"{provider['name']}: returned zero rows"
+    raise RuntimeError(f"generation provider failed after retries: {last_error}")
+
+def _request_provider_rows(
     *,
     api_key: str,
     base_url: str,
@@ -231,13 +372,13 @@ def _generate_rows(
         temperature=temperature,
         max_tokens=max_tokens,
     )
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     request = urllib.request.Request(
         base_url.rstrip("/") + "/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
+        headers=headers,
     )
     with urllib.request.urlopen(request, timeout=180) as response:
         decoded = json.loads(response.read().decode("utf-8"))
@@ -261,6 +402,13 @@ def _build_generation_payload(
         "\\\"stop\\\"}\"}],\"expected_json\":{\"intent\":\"stop\"},\"metadata\":"
         "{\"language\":\"vi\",\"task_type\":\"normal\",\"source\":\"synthetic\","
         "\"safety_class\":\"safe_motion_plan\",\"requires_perception\":false}}. "
+        "Return exactly the requested number of rows. For every ambiguous, "
+        "hard_negative, or vision_stub row, and for every row with "
+        "requires_perception=true or safety_class=perception_required, the "
+        "assistant content and expected_json must be a safe error object, never "
+        "a motion intent. Use PERCEPTION_REQUIRED, CALIBRATION_REQUIRED, "
+        "UNSAFE_COMMAND, MISSING_SLOT, or UNSUPPORTED_OR_AMBIGUOUS_COMMAND as "
+        "appropriate. "
         "Do not include markdown, comments, primitive_type, trajectories, ROS calls, "
         "MotoROS2 calls, or hardware execution claims."
     )
