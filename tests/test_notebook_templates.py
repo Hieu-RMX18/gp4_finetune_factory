@@ -14,6 +14,7 @@ def test_colab_notebook_can_clone_pushed_branch_without_source_bundle() -> None:
 
     assert "git clone --branch codex/gp4-react-ir-cloud-workflow" in setup_source
     assert "if Path(SOURCE_BUNDLE).exists()" in setup_source
+    assert "os.chdir('/content')" in setup_source
 
 
 def test_colab_notebook_loads_deepseek_key_from_colab_secrets() -> None:
@@ -49,3 +50,4 @@ def test_kaggle_notebook_can_clone_pushed_branch_without_source_bundle() -> None
 
     assert "git clone --branch codex/gp4-react-ir-cloud-workflow" in setup_source
     assert "if Path(SOURCE_BUNDLE).exists()" in setup_source
+    assert "os.chdir('/kaggle/working')" in setup_source
