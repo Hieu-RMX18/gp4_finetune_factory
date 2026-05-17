@@ -11,6 +11,9 @@ GP4_WS = Path("/home/hieu2/gp4_ws")
 sys.path.insert(0, str(ROOT / "scripts"))
 
 
+from factory_common import read_yaml
+
+
 def _run(*args: str, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, *args],
@@ -68,7 +71,8 @@ def test_extract_repo_contract_reads_gp4_contract(tmp_path: Path) -> None:
     assert "sequence" in contract["top_level_output_intents"]
     assert "MOVE_REL" in contract["schema_primitives"]
     assert contract["normal_output_forbids_primitive_type"] is True
-    assert contract["safety"]["workspace_bounds"]["z_min"] == 0.23
+    safety_rules = read_yaml(GP4_WS / "src/safety/config/safety_rules.yaml")
+    assert contract["safety"]["workspace_bounds"] == safety_rules["workspace_bounds"]
 
 
 def test_extract_repo_contract_requires_cloud_output_path(tmp_path: Path) -> None:
