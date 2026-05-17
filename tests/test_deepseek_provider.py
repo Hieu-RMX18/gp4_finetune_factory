@@ -8,6 +8,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from generate_batch_deepseek import (
     DeepSeekProviderError,
+    _build_generation_payload,
+    _parse_generated_rows,
     resolve_deepseek_config,
 )
 
@@ -58,3 +60,24 @@ def test_deepseek_rejects_unapproved_model() -> None:
 
     with pytest.raises(DeepSeekProviderError, match="unsupported DeepSeek model"):
         resolve_deepseek_config(_policy("deepseek-chat"), env=env, dry_run=False)
+
+
+def test_deepseek_parser_accepts_fenced_json_object() -> None:
+    content = '```json\n{"examples": [{"id": "gp4_vi_synthetic_000001"}]}\n```'
+
+    rows = _parse_generated_rows(content)
+
+    assert rows == [{"id": "gp4_vi_synthetic_000001"}]
+
+
+def test_deepseek_payload_requests_json_object() -> None:
+    payload = _build_generation_payload(
+        model="deepseek-v4-flash",
+        seed_rows=[{"id": "seed"}],
+        count=10,
+        temperature=0.4,
+        max_tokens=7000,
+    )
+
+    assert payload["response_format"] == {"type": "json_object"}
+    assert "examples" in payload["messages"][0]["content"]

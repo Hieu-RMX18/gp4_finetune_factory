@@ -224,25 +224,13 @@ def _generate_rows(
     temperature: float,
     max_tokens: int,
 ) -> list[dict[str, Any]]:
-    payload = {
-        "model": model,
-        "messages": [
-            {
-                "role": "system",
-                "content": "Generate JSON-only GP4 ReAct-IR dataset rows.",
-            },
-            {
-                "role": "user",
-                "content": json.dumps(
-                    {"requested_rows": count, "seed_examples": seed_rows[:8]},
-                    ensure_ascii=False,
-                ),
-            },
-        ],
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "stream": False,
-    }
+    payload = _build_generation_payload(
+        model=model,
+        seed_rows=seed_rows,
+        count=count,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
     request = urllib.request.Request(
         base_url.rstrip("/") + "/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
@@ -254,11 +242,101 @@ def _generate_rows(
     with urllib.request.urlopen(request, timeout=180) as response:
         decoded = json.loads(response.read().decode("utf-8"))
     content = decoded["choices"][0]["message"]["content"]
-    parsed = json.loads(content)
+    return _parse_generated_rows(content)
+
+def _build_generation_payload(
+    *,
+    model: str,
+    seed_rows: list[dict[str, Any]],
+    count: int,
+    temperature: float,
+    max_tokens: int,
+) -> dict[str, Any]:
+    system_prompt = (
+        "Generate only valid JSON. Return one JSON object with key \"examples\" "
+        "whose value is a list of GP4 dataset rows. Each row must match this "
+        "shape: {\"id\":\"gp4_vi_synthetic_000001\",\"messages\":[{\"role\":\"system\","
+        "\"content\":\"GP4 safety Semantic IR system prompt\"},{\"role\":\"user\","
+        "\"content\":\"...\"},{\"role\":\"assistant\",\"content\":\"{\\\"intent\\\":"
+        "\\\"stop\\\"}\"}],\"expected_json\":{\"intent\":\"stop\"},\"metadata\":"
+        "{\"language\":\"vi\",\"task_type\":\"normal\",\"source\":\"synthetic\","
+        "\"safety_class\":\"safe_motion_plan\",\"requires_perception\":false}}. "
+        "Do not include markdown, comments, primitive_type, trajectories, ROS calls, "
+        "MotoROS2 calls, or hardware execution claims."
+    )
+    user_payload = {
+        "requested_rows": count,
+        "id_prefix": "gp4_vi_synthetic",
+        "allowed_languages": ["vi", "en", "mixed"],
+        "allowed_task_types": [
+            "normal",
+            "ambiguous",
+            "hard_negative",
+            "status",
+            "vision_stub",
+        ],
+        "allowed_safety_classes": [
+            "safe_motion_plan",
+            "safe_query",
+            "safe_setting",
+            "clarification_required",
+            "unsafe_rejected",
+            "perception_required",
+        ],
+        "seed_examples": seed_rows[:8],
+    }
+    return {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": json.dumps(user_payload, ensure_ascii=False),
+            },
+        ],
+        "response_format": {"type": "json_object"},
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False,
+    }
+
+def _parse_generated_rows(content: str) -> list[dict[str, Any]]:
+    stripped = content.strip()
+    if not stripped:
+        raise RuntimeError("DeepSeek response content was empty.")
+    parsed = _parse_json_content(stripped)
     rows = parsed["examples"] if isinstance(parsed, dict) else parsed
     if not isinstance(rows, list):
         raise RuntimeError("DeepSeek response did not contain a row list.")
     return rows
+
+def _parse_json_content(content: str) -> Any:
+    decoder = json.JSONDecoder()
+    candidates = [content]
+    if content.startswith("```"):
+        lines = content.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        candidates.append("\n".join(lines).strip())
+    for start in (content.find("{"), content.find("[")):
+        if start >= 0:
+            candidates.append(content[start:])
+    errors: list[str] = []
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(candidate)
+            return parsed
+        except json.JSONDecodeError as exc:
+            errors.append(exc.msg)
+    preview = content[:240].replace("\n", "\\n")
+    raise RuntimeError(f"DeepSeek response was not valid JSON: {errors[-1]}; content_prefix={preview}")
 
 
 if __name__ == "__main__":
