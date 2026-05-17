@@ -11,7 +11,7 @@ GP4_WS = Path("/home/hieu2/gp4_ws")
 sys.path.insert(0, str(ROOT / "scripts"))
 
 
-from factory_common import read_yaml
+from factory_common import SEMANTIC_IR_SYSTEM_PROMPT, read_yaml
 
 
 def _run(*args: str, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
@@ -49,6 +49,10 @@ def _example(expected_json: dict, *, task_type: str = "normal") -> dict:
             "requires_perception": False,
         },
     }
+
+def test_system_prompt_allows_verified_vision_context_planning() -> None:
+    assert "verified ROS2/MoveIt2 vision context" in SEMANTIC_IR_SYSTEM_PROMPT
+    assert "unverified or low-confidence" in SEMANTIC_IR_SYSTEM_PROMPT
 
 
 def test_extract_repo_contract_reads_gp4_contract(tmp_path: Path) -> None:
@@ -727,6 +731,59 @@ def test_train_unsloth_dry_run_reports_dataset_rows(tmp_path: Path) -> None:
     assert report["train_rows"] == 1
     assert report["val_rows"] == 1
     assert report["training"]["load_in_4bit"] is True
+
+
+def test_train_unsloth_formats_only_messages_for_training_text() -> None:
+    import train_unsloth_qlora
+
+    rows = [
+        _example({"intent": "move_joint", "joints": {"joint_1": 0.0}}),
+        _example({"intent": "move_joint", "joints": [0.0, 0.1]}),
+    ]
+
+    class Tokenizer:
+        def apply_chat_template(
+            self, messages: list[dict[str, str]], *, tokenize: bool
+        ) -> str:
+            assert tokenize is False
+            return messages[-1]["content"]
+
+    formatted = train_unsloth_qlora._format_training_rows(rows, Tokenizer())
+
+    assert list(formatted[0]) == ["text"]
+    assert list(formatted[1]) == ["text"]
+    assert json.loads(formatted[0]["text"]) == {
+        "intent": "move_joint",
+        "joints": {"joint_1": 0.0},
+    }
+    assert json.loads(formatted[1]["text"]) == {
+        "intent": "move_joint",
+        "joints": [0.0, 0.1],
+    }
+
+
+def test_train_unsloth_tokenizes_text_without_raw_json_columns() -> None:
+    import train_unsloth_qlora
+
+    rows = [_example({"intent": "stop", "joints": {"joint_1": 0.0}})]
+
+    class Tokenizer:
+        def apply_chat_template(
+            self, messages: list[dict[str, str]], *, tokenize: bool
+        ) -> str:
+            return messages[-1]["content"]
+
+        def __call__(
+            self, texts: list[str], *, truncation: bool, max_length: int, padding: bool
+        ) -> dict[str, list[list[int]]]:
+            assert truncation is True
+            assert max_length == 16
+            assert padding is False
+            return {"input_ids": [[1, 2]], "attention_mask": [[1, 1]]}
+
+    tokenized = train_unsloth_qlora._tokenize_training_rows(rows, Tokenizer(), 16)
+
+    assert tokenized == [{"input_ids": [1, 2], "attention_mask": [1, 1]}]
 
 
 def test_train_unsloth_writes_blocked_report_for_runtime_failure(

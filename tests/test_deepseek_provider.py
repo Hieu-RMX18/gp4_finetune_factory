@@ -261,6 +261,31 @@ def test_provider_seed_rows_can_be_expanded_to_requested_count() -> None:
     assert len({row["messages"][1]["content"] for row in rows}) == 3
     assert all(row["metadata"]["source"] == "synthetic" for row in rows)
 
+def test_seed_expansion_converts_perception_rows_to_safe_errors() -> None:
+    seed_rows = [
+        {
+            "id": "gp4_vi_vision_stub_000001",
+            "messages": [
+                {"role": "system", "content": "GP4 safety Semantic IR system prompt"},
+                {"role": "user", "content": "pick the camera object"},
+                {"role": "assistant", "content": "{\"intent\":\"absolute_move_ptp\"}"},
+            ],
+            "expected_json": {"intent": "absolute_move_ptp"},
+            "metadata": {
+                "language": "en",
+                "task_type": "vision_stub",
+                "source": "provider",
+                "safety_class": "perception_required",
+                "requires_perception": True,
+            },
+        }
+    ]
+
+    rows = _expand_rows_to_count(seed_rows, count=1, id_prefix="gp4_vi_synthetic")
+
+    assert rows[0]["expected_json"]["error"] == "PERCEPTION_REQUIRED"
+    assert json.loads(rows[0]["messages"][-1]["content"]) == rows[0]["expected_json"]
+
 def test_seed_expansion_needs_no_provider_when_enabled() -> None:
     seed_rows = [
         {

@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from cloud_orchestrator import CLOUD_TRAIN_RATIO, CLOUD_VAL_RATIO
+from cloud_orchestrator import CLOUD_TRAIN_RATIO, CLOUD_VAL_RATIO, PREVIOUS_GATE_REPORTS
 
 
 def test_cloud_split_ratio_keeps_fast_eval_holdout() -> None:
@@ -15,6 +15,9 @@ def test_cloud_split_ratio_keeps_fast_eval_holdout() -> None:
     assert CLOUD_TRAIN_RATIO == 0.998
     assert CLOUD_VAL_RATIO == 0.001
     assert int(50000 * test_ratio) == 50
+
+def test_dedupe_waits_for_final_tiered_quality_gate() -> None:
+    assert PREVIOUS_GATE_REPORTS["dedupe"] == "quality-gate-50k"
 
 
 def test_generate_batch_deepseek_dry_run_respects_seed_gate(tmp_path: Path) -> None:

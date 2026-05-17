@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -90,10 +91,11 @@ def main() -> int:
             report_path=args.report,
             report=report,
         )
-    except (ModuleNotFoundError, RuntimeError) as exc:
+    except Exception as exc:
         report["status"] = "blocked"
         report["passed"] = False
-        report["reason"] = str(exc)
+        report["reason"] = f"{type(exc).__name__}: {exc}"
+        report["traceback"] = traceback.format_exc()
         write_json(args.report, report)
         print(f"training_blocked reason={exc} report={args.report}")
         return 1
@@ -136,8 +138,8 @@ def _train(
     report: dict[str, Any],
 ) -> None:
     import torch
-    from datasets import load_dataset
-    from trl import SFTTrainer
+    from datasets import Dataset
+    from transformers import DataCollatorForLanguageModeling, Trainer, TrainingArguments
     from unsloth import FastLanguageModel
 
     if not torch.cuda.is_available():
@@ -170,31 +172,20 @@ def _train(
         random_state=training["seed"],
     )
 
-    dataset = load_dataset(
-        "json",
-        data_files={"train": str(train_path), "validation": str(val_path)},
+    train_dataset = Dataset.from_list(
+        _tokenize_training_rows(read_jsonl(train_path), tokenizer, training["max_seq_length"])
     )
-
-    def format_row(row: dict[str, Any]) -> dict[str, str]:
-        return {
-            "text": tokenizer.apply_chat_template(
-                row["messages"],
-                tokenize=False,
-            )
-        }
-
-    train_dataset = dataset["train"].map(format_row, remove_columns=dataset["train"].column_names)
-    val_dataset = dataset["validation"].map(
-        format_row,
-        remove_columns=dataset["validation"].column_names,
+    val_dataset = Dataset.from_list(
+        _tokenize_training_rows(read_jsonl(val_path), tokenizer, training["max_seq_length"])
     )
-    trainer_kwargs: dict[str, Any] = {
-        "model": model,
-        "train_dataset": train_dataset,
-        "eval_dataset": val_dataset,
-        "args": _sft_config(output_dir=output_dir, training=training),
-    }
-    trainer = _build_trainer(SFTTrainer, trainer_kwargs, tokenizer)
+    trainer = Trainer(
+        model=model,
+        train_dataset=train_dataset,
+        eval_dataset=val_dataset,
+        args=_training_args(TrainingArguments, output_dir=output_dir, training=training),
+        data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
+        processing_class=tokenizer,
+    )
 
     train_result = trainer.train()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -215,43 +206,57 @@ def _train(
     print(f"trained_adapter={output_dir} report={report_path}")
 
 
-def _build_trainer(trainer_cls: Any, trainer_kwargs: dict[str, Any], tokenizer: Any) -> Any:
-    attempts = [
-        {"processing_class": tokenizer, "dataset_text_field": "text"},
-        {"processing_class": tokenizer},
-        {"tokenizer": tokenizer, "dataset_text_field": "text"},
-        {"tokenizer": tokenizer},
+def _format_training_rows(rows: list[dict[str, Any]], tokenizer: Any) -> list[dict[str, str]]:
+    return [
+        {
+            "text": tokenizer.apply_chat_template(
+                row["messages"],
+                tokenize=False,
+            )
+        }
+        for row in rows
     ]
-    last_error: TypeError | None = None
-    for extra_kwargs in attempts:
-        try:
-            return trainer_cls(**trainer_kwargs, **extra_kwargs)
-        except TypeError as exc:
-            last_error = exc
-    if last_error is None:
-        raise RuntimeError("SFTTrainer initialization failed without an exception.")
-    raise last_error
 
 
-def _sft_config(*, output_dir: Path, training: dict[str, Any]) -> Any:
-    from trl import SFTConfig
+def _tokenize_training_rows(
+    rows: list[dict[str, Any]], tokenizer: Any, max_seq_length: int
+) -> list[dict[str, list[int]]]:
+    texts = [row["text"] for row in _format_training_rows(rows, tokenizer)]
+    encoded = tokenizer(
+        texts,
+        truncation=True,
+        max_length=max_seq_length,
+        padding=False,
+    )
+    return [
+        {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+        }
+        for input_ids, attention_mask in zip(
+            encoded["input_ids"],
+            encoded["attention_mask"],
+            strict=True,
+        )
+    ]
 
-    common_kwargs = {
-        "output_dir": str(output_dir),
-        "max_steps": training["max_steps"],
-        "per_device_train_batch_size": training["per_device_train_batch_size"],
-        "gradient_accumulation_steps": training["gradient_accumulation_steps"],
-        "learning_rate": training["learning_rate"],
-        "logging_steps": training["logging_steps"],
-        "save_steps": training["save_steps"],
-        "seed": training["seed"],
-        "max_seq_length": training["max_seq_length"],
-        "optim": "adamw_8bit",
-    }
-    try:
-        return SFTConfig(**common_kwargs, dataset_text_field="text")
-    except TypeError:
-        return SFTConfig(**common_kwargs)
+
+def _training_args(
+    training_args_cls: Any, *, output_dir: Path, training: dict[str, Any]
+) -> Any:
+    return training_args_cls(
+        output_dir=str(output_dir),
+        max_steps=training["max_steps"],
+        per_device_train_batch_size=training["per_device_train_batch_size"],
+        gradient_accumulation_steps=training["gradient_accumulation_steps"],
+        learning_rate=training["learning_rate"],
+        logging_steps=training["logging_steps"],
+        save_steps=training["save_steps"],
+        seed=training["seed"],
+        optim="adamw_8bit",
+        dataloader_num_workers=0,
+        report_to=[],
+    )
 
 def _can_write_cloud_report(
     report: Path,

@@ -31,7 +31,7 @@ DATASET_SPEC = ROOT / "configs/dataset_spec.yaml"
 PREVIOUS_GATE_REPORTS = {
     "generate": "seed-check",
     "quality-gate": "generate",
-    "dedupe": "quality-gate",
+    "dedupe": "quality-gate-50k",
     "split": "dedupe",
     "train": "split",
     "infer": "train",

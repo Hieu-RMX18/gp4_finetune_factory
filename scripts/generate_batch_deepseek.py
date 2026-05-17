@@ -532,6 +532,9 @@ def _expand_rows_to_count(
         base = usable_rows[index % len(usable_rows)]
         expected_json = dict(base["expected_json"])
         messages = list(base["messages"])
+        metadata = _synthetic_metadata(base["metadata"])
+        if _metadata_requires_safe_error(metadata) and "error" not in expected_json:
+            expected_json = _safe_error_payload(metadata)
         row_number = index + 1
         user_content = str(messages[1]["content"])
         expanded.append(
@@ -553,7 +556,7 @@ def _expand_rows_to_count(
                     },
                 ],
                 "expected_json": expected_json,
-                "metadata": _synthetic_metadata(base["metadata"]),
+                "metadata": metadata,
             }
         )
     return expanded
@@ -607,6 +610,37 @@ def _synthetic_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
             "safe_motion_plan",
         ),
         "requires_perception": bool(metadata.get("requires_perception", False)),
+    }
+
+def _metadata_requires_safe_error(metadata: dict[str, Any]) -> bool:
+    return (
+        metadata.get("task_type") in {"ambiguous", "hard_negative", "vision_stub"}
+        or bool(metadata.get("requires_perception", False))
+        or metadata.get("safety_class") in {"unsafe_rejected", "perception_required"}
+    )
+
+def _safe_error_payload(metadata: dict[str, Any]) -> dict[str, Any]:
+    if (
+        metadata.get("task_type") == "vision_stub"
+        or metadata.get("safety_class") == "perception_required"
+        or bool(metadata.get("requires_perception", False))
+    ):
+        return {
+            "error": "PERCEPTION_REQUIRED",
+            "missing_slots": ["object_pose", "calibration_status"],
+            "message": "Verified perception and calibration are required before motion planning.",
+        }
+    if (
+        metadata.get("task_type") == "hard_negative"
+        or metadata.get("safety_class") == "unsafe_rejected"
+    ):
+        return {
+            "error": "UNSAFE_COMMAND",
+            "message": "The request is unsafe and cannot be converted to motion Semantic IR.",
+        }
+    return {
+        "error": "MISSING_SLOT",
+        "message": "More validated command details are required before creating Semantic IR.",
     }
 
 def _allowed_value(value: Any, allowed: set[str], default: str) -> str:

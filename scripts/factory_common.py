@@ -24,8 +24,10 @@ SEMANTIC_IR_SYSTEM_PROMPT = (
     "Use return_to_start only inside sequence steps. Use set_speed with "
     "velocity_scale for speed commands. Use draw_shape with shape circle for "
     "circle requests; never invent aliases such as set_speed_scale or draw_circle. "
-    "Unsafe, ambiguous, unknown IO, or D435i perception-dependent requests must "
-    "use a safe error object."
+    "When verified ROS2/MoveIt2 vision context provides object pose, color, shape, "
+    "name, confidence, and planning-scene status, produce a safe task-planner "
+    "Semantic IR action. Unsafe, ambiguous, unknown IO, or unverified or "
+    "low-confidence D435i perception-dependent requests must use a safe error object."
 )
 ALLOWED_ERROR_CODES = {
     "MISSING_SLOT",
