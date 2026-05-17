@@ -17,7 +17,7 @@ def test_colab_notebook_can_clone_pushed_branch_without_source_bundle() -> None:
     assert "os.chdir('/content')" in setup_source
 
 
-def test_colab_notebook_loads_deepseek_key_from_colab_secrets() -> None:
+def test_colab_notebook_loads_optional_provider_secrets() -> None:
     notebook = json.loads(
         (ROOT / "notebooks/colab_gp4_react_qwen25_qlora.ipynb").read_text(
             encoding="utf-8"
@@ -29,7 +29,7 @@ def test_colab_notebook_loads_deepseek_key_from_colab_secrets() -> None:
     assert "'DEEPSEEK_API_KEY'" in secret_source
     assert "userdata.get(secret_name)" in secret_source
     assert "'OPENAI_BASE_URL'" in secret_source
-    assert "os.environ.get('DEEPSEEK_API_KEY') or os.environ.get('OPENAI_BASE_URL')" in secret_source
+    assert "Set DEEPSEEK_API_KEY or OPENAI_BASE_URL" not in secret_source
     assert "os.environ['OPENAI_MODEL'] = os.environ.get('OPENAI_MODEL', 'gpt-5.4')" in secret_source
 
 

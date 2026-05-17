@@ -56,6 +56,8 @@ GENERATION_COUNTS = {
     "generate-100k": 100000,
     "generate": 50,
 }
+CLOUD_TRAIN_RATIO = 0.998
+CLOUD_VAL_RATIO = 0.001
 
 
 def main() -> int:
@@ -188,6 +190,10 @@ def _run_cloud_phase(phase: str, context: dict[str, Any]) -> dict[str, Any]:
             str(cloud_root),
             "--locked-eval",
             str(locked_eval),
+            "--train-ratio",
+            str(CLOUD_TRAIN_RATIO),
+            "--val-ratio",
+            str(CLOUD_VAL_RATIO),
         ]
         return _run_script_phase(phase, context, command)
     if phase == "train":

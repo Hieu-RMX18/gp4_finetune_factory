@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import sys
+import subprocess
 
 import pytest
 
@@ -10,6 +11,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from generate_batch_deepseek import (
     DeepSeekProviderError,
     _build_generation_payload,
+    _expand_rows_to_count,
     _generate_rows,
     _parse_generated_rows,
     resolve_deepseek_config,
@@ -228,3 +230,125 @@ def test_generation_can_use_9router_without_deepseek_provider(monkeypatch) -> No
 
     assert rows == [{"id": "gp4_vi_synthetic_000001"}]
     assert calls == [("http://localhost:20128/v1/chat/completions", "gpt-5.4")]
+
+def test_provider_seed_rows_can_be_expanded_to_requested_count() -> None:
+    seed_rows = [
+        {
+            "id": "gp4_vi_normal_000001",
+            "messages": [
+                {"role": "system", "content": "GP4 safety Semantic IR system prompt"},
+                {"role": "user", "content": "move up"},
+                {"role": "assistant", "content": "{\"intent\":\"stop\"}"},
+            ],
+            "expected_json": {"intent": "stop"},
+            "metadata": {
+                "language": "vi",
+                "task_type": "normal",
+                "source": "seed",
+                "safety_class": "safe_motion_plan",
+                "requires_perception": False,
+            },
+        }
+    ]
+
+    rows = _expand_rows_to_count(seed_rows, count=3, id_prefix="gp4_vi_synthetic")
+
+    assert [row["id"] for row in rows] == [
+        "gp4_vi_synthetic_000001",
+        "gp4_vi_synthetic_000002",
+        "gp4_vi_synthetic_000003",
+    ]
+    assert len({row["messages"][1]["content"] for row in rows}) == 3
+    assert all(row["metadata"]["source"] == "synthetic" for row in rows)
+
+def test_seed_expansion_needs_no_provider_when_enabled() -> None:
+    seed_rows = [
+        {
+            "id": "gp4_vi_normal_000001",
+            "messages": [
+                {"role": "system", "content": "GP4 safety Semantic IR system prompt"},
+                {"role": "user", "content": "dừng robot"},
+                {"role": "assistant", "content": "{\"intent\":\"stop\"}"},
+            ],
+            "expected_json": {"intent": "stop"},
+            "metadata": {
+                "language": "vi",
+                "task_type": "normal",
+                "source": "seed",
+                "safety_class": "safe_motion_plan",
+                "requires_perception": False,
+            },
+        }
+    ]
+
+    rows = _generate_rows(
+        api_key="",
+        base_url="",
+        model="",
+        seed_rows=seed_rows,
+        count=2,
+        temperature=0.4,
+        max_tokens=7000,
+        batch_size=50,
+        retry_limit=1,
+        expand_from_provider=True,
+    )
+
+    assert len(rows) == 2
+    assert rows[0]["expected_json"] == {"intent": "stop"}
+
+def test_generator_cli_seed_expansion_runs_without_provider_env(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    seed = tmp_path / "seed.jsonl"
+    output = tmp_path / "raw.jsonl"
+    report = tmp_path / "report.json"
+    row = {
+        "id": "gp4_vi_normal_000001",
+        "messages": [
+            {"role": "system", "content": "GP4 safety Semantic IR system prompt"},
+            {"role": "user", "content": "dừng robot"},
+            {"role": "assistant", "content": "{\"intent\":\"stop\"}"},
+        ],
+        "expected_json": {"intent": "stop"},
+        "metadata": {
+            "language": "vi",
+            "task_type": "normal",
+            "source": "seed",
+            "safety_class": "safe_motion_plan",
+            "requires_perception": False,
+        },
+    }
+    seed.write_text(
+        "".join(json.dumps({**row, "id": f"gp4_vi_normal_{index:06d}"}) + "\n" for index in range(1, 51)),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/generate_batch_deepseek.py",
+            "--seed",
+            str(seed),
+            "--output",
+            str(output),
+            "--cloud-root",
+            str(tmp_path),
+            "--report",
+            str(report),
+            "--count",
+            "3",
+            "--allow-tmp",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert len(output.read_text(encoding="utf-8").splitlines()) == 3
+    assert json.loads(report.read_text(encoding="utf-8"))["generated"] == 3

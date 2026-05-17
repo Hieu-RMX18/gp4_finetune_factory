@@ -16,6 +16,7 @@ candidate_budget:
 batch:
   default_size: 50
   retry_limit: 4
+  expand_from_provider: true
 typo_noise:
   locked_eval_source: locked_typo_eval
   vietnamese_down_variants:

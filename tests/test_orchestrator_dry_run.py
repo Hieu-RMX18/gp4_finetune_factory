@@ -4,6 +4,17 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from cloud_orchestrator import CLOUD_TRAIN_RATIO, CLOUD_VAL_RATIO
+
+
+def test_cloud_split_ratio_keeps_fast_eval_holdout() -> None:
+    test_ratio = 1 - CLOUD_TRAIN_RATIO - CLOUD_VAL_RATIO
+
+    assert CLOUD_TRAIN_RATIO == 0.998
+    assert CLOUD_VAL_RATIO == 0.001
+    assert int(50000 * test_ratio) == 50
 
 
 def test_generate_batch_deepseek_dry_run_respects_seed_gate(tmp_path: Path) -> None:

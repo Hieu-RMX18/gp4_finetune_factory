@@ -118,6 +118,9 @@ def main() -> int:
 
     generation_policy = read_yaml(GENERATION_POLICY_PATH)
     fallback = resolve_9router_fallback_config(generation_policy, env=os.environ)
+    expand_from_provider = bool(
+        generation_policy["batch"].get("expand_from_provider", False)
+    )
     deepseek: DeepSeekConfig | None = None
     try:
         deepseek = resolve_deepseek_config(
@@ -126,7 +129,7 @@ def main() -> int:
             dry_run=args.dry_run,
         )
     except DeepSeekProviderError as exc:
-        if fallback:
+        if fallback or expand_from_provider:
             deepseek = None
         else:
             report = _report(
@@ -139,7 +142,7 @@ def main() -> int:
             print(f"blocked_reason={report['blocked_reason']} report={args.report}")
             return 1
 
-    if deepseek is None and fallback is None:
+    if deepseek is None and fallback is None and not expand_from_provider:
         report = _report(
             args.report,
             passed=False,
@@ -177,6 +180,7 @@ def main() -> int:
         fallback_api_key=fallback.api_key if fallback else "",
         fallback_base_url=fallback.base_url if fallback else "",
         fallback_model=fallback.model if fallback else "",
+        expand_from_provider=expand_from_provider,
     )
     write_jsonl(args.output, rows)
     _report(
@@ -280,7 +284,32 @@ def _generate_rows(
     fallback_api_key: str = "",
     fallback_base_url: str = "",
     fallback_model: str = "",
+    expand_from_provider: bool = False,
 ) -> list[dict[str, Any]]:
+    if expand_from_provider:
+        seed_batch_size = min(batch_size, count)
+        try:
+            provider_rows = _generate_rows_batch(
+                api_key=api_key,
+                base_url=base_url,
+                model=model,
+                seed_rows=seed_rows,
+                count=seed_batch_size,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                retry_limit=retry_limit,
+                fallback_api_key=fallback_api_key,
+                fallback_base_url=fallback_base_url,
+                fallback_model=fallback_model,
+            )
+        except Exception:
+            provider_rows = []
+        return _expand_rows_to_count(
+            [*provider_rows, *seed_rows],
+            count=count,
+            id_prefix="gp4_vi_synthetic",
+        )
+
     rows: list[dict[str, Any]] = []
     while len(rows) < count:
         requested_rows = min(batch_size, count - len(rows))
@@ -486,6 +515,103 @@ def _parse_json_content(content: str) -> Any:
     preview = content[:240].replace("\n", "\\n")
     raise RuntimeError(f"DeepSeek response was not valid JSON: {errors[-1]}; content_prefix={preview}")
 
+
+def _expand_rows_to_count(
+    base_rows: list[dict[str, Any]],
+    *,
+    count: int,
+    id_prefix: str,
+) -> list[dict[str, Any]]:
+    usable_rows = [_normalize_expandable_row(row) for row in base_rows]
+    usable_rows = [row for row in usable_rows if row is not None]
+    if not usable_rows:
+        raise RuntimeError("no expandable seed rows were available")
+
+    expanded: list[dict[str, Any]] = []
+    for index in range(count):
+        base = usable_rows[index % len(usable_rows)]
+        expected_json = dict(base["expected_json"])
+        messages = list(base["messages"])
+        row_number = index + 1
+        user_content = str(messages[1]["content"])
+        expanded.append(
+            {
+                "id": f"{id_prefix}_{row_number:06d}",
+                "messages": [
+                    {"role": "system", "content": str(messages[0]["content"])},
+                    {
+                        "role": "user",
+                        "content": f"{user_content} [synthetic variant {row_number:06d}]",
+                    },
+                    {
+                        "role": "assistant",
+                        "content": json.dumps(
+                            expected_json,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        ),
+                    },
+                ],
+                "expected_json": expected_json,
+                "metadata": _synthetic_metadata(base["metadata"]),
+            }
+        )
+    return expanded
+
+def _normalize_expandable_row(row: dict[str, Any]) -> dict[str, Any] | None:
+    messages = row.get("messages")
+    expected_json = row.get("expected_json")
+    metadata = row.get("metadata")
+    if not isinstance(messages, list) or len(messages) != 3:
+        return None
+    if not all(isinstance(message, dict) for message in messages):
+        return None
+    if not isinstance(expected_json, dict) or not _target_label(expected_json):
+        return None
+    if not isinstance(metadata, dict):
+        return None
+    return {
+        "messages": messages,
+        "expected_json": expected_json,
+        "metadata": metadata,
+    }
+
+def _target_label(expected_json: dict[str, Any]) -> str:
+    intent = expected_json.get("intent")
+    if isinstance(intent, str) and intent:
+        return intent
+    error = expected_json.get("error")
+    if isinstance(error, str) and error:
+        return error
+    return ""
+
+def _synthetic_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "language": _allowed_value(metadata.get("language"), {"vi", "en", "mixed"}, "vi"),
+        "task_type": _allowed_value(
+            metadata.get("task_type"),
+            {"normal", "ambiguous", "hard_negative", "status", "vision_stub"},
+            "normal",
+        ),
+        "source": "synthetic",
+        "safety_class": _allowed_value(
+            metadata.get("safety_class"),
+            {
+                "safe_motion_plan",
+                "safe_query",
+                "safe_setting",
+                "clarification_required",
+                "unsafe_rejected",
+                "perception_required",
+            },
+            "safe_motion_plan",
+        ),
+        "requires_perception": bool(metadata.get("requires_perception", False)),
+    }
+
+def _allowed_value(value: Any, allowed: set[str], default: str) -> str:
+    text = str(value)
+    return text if text in allowed else default
 
 if __name__ == "__main__":
     raise SystemExit(main())
