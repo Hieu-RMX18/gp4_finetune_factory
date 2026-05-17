@@ -11,7 +11,9 @@ from typing import Any
 import yaml
 
 
+ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_GP4_WS = Path("/home/hieu2/gp4_ws")
+SEMANTIC_SCHEMA_PATH = ROOT / "schemas/semantic_ir.schema.json"
 SEMANTIC_IR_SYSTEM_PROMPT = (
     "You generate JSON-only GP4 Semantic IR for the ROS2 + LLM HMI safety path. "
     "Return exactly one JSON object as assistant content. Normal outputs use an "
@@ -200,6 +202,29 @@ def load_repo_contract(repo: Path = DEFAULT_GP4_WS) -> dict[str, Any]:
         },
     }
 
+
+def load_bundled_contract() -> dict[str, Any]:
+    semantic_schema = read_json(SEMANTIC_SCHEMA_PATH)
+    properties = semantic_schema.get("properties", {})
+    intents = sorted(properties.get("intent", {}).get("enum", []))
+    error_codes = sorted(properties.get("error", {}).get("enum", ALLOWED_ERROR_CODES))
+    return {
+        "repo_path": str(ROOT),
+        "branch": "",
+        "head": "",
+        "is_dirty": False,
+        "schema_primitives": [],
+        "cpp_primitives": [],
+        "semantic_intents": intents,
+        "top_level_output_intents": intents,
+        "contract_gate_intents": intents,
+        "normal_output_forbids_primitive_type": True,
+        "allowed_error_codes": error_codes,
+        "safety": {},
+        "source_files": {
+            "semantic_ir_schema": str(SEMANTIC_SCHEMA_PATH),
+        },
+    }
 
 def parse_single_json_object(text: str) -> dict[str, Any]:
     if not isinstance(text, str) or not text.strip():

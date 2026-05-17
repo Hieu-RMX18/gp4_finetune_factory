@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,3 +54,29 @@ def test_finds_local_artifact_usage() -> None:
     findings = find_local_artifact_paths(paths, policy)
 
     assert findings == ["/home/hieu2/gp4_finetune_factory/outputs/model_outputs.jsonl"]
+
+def test_cloud_storage_policy_cli_requires_cloud_report_path(tmp_path: Path) -> None:
+    cloud_root = tmp_path / "cloud"
+    report = tmp_path / "outside" / "policy_report.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/check_cloud_storage_policy.py",
+            "--cloud-root",
+            str(cloud_root),
+            "--path",
+            str(cloud_root / "reports/ok.json"),
+            "--report",
+            str(report),
+            "--allow-tmp",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "outside CLOUD_ROOT" in (result.stdout + result.stderr)
+    assert not report.exists()

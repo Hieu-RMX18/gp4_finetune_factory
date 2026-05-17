@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from cloud_runtime import CloudPathError, validate_cloud_output_path
 from factory_common import DEFAULT_GP4_WS, load_repo_contract, write_json
 
 
@@ -13,7 +14,19 @@ def main() -> int:
     )
     parser.add_argument("--repo", type=Path, default=DEFAULT_GP4_WS)
     parser.add_argument("--output", type=Path, default=Path("reports/repo_contract.json"))
+    parser.add_argument("--cloud-root", type=Path)
+    parser.add_argument("--allow-tmp", action="store_true")
     args = parser.parse_args()
+
+    try:
+        validate_cloud_output_path(
+            args.output,
+            args.cloud_root,
+            allow_tmp=args.allow_tmp,
+        )
+    except CloudPathError as exc:
+        print(f"contract_blocked reason={exc} output={args.output}")
+        return 1
 
     contract = load_repo_contract(args.repo)
     write_json(args.output, contract)

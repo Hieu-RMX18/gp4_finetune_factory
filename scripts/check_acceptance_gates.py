@@ -5,6 +5,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from cloud_runtime import CloudPathError, validate_cloud_run_paths
 from factory_common import read_json, read_yaml, write_json
 
 
@@ -16,6 +17,9 @@ DEFAULT_GATE_REPORT = ROOT / "reports/acceptance_gate_report.json"
 MIN_GATES = {
     "json_parse_success_min": "json_parse_success",
     "heldout_intent_accuracy_min": "intent_accuracy",
+}
+OPTIONAL_MIN_GATES = {
+    "semantic_ir_schema_success_min": "semantic_ir_success",
 }
 MAX_GATES = {
     "primitive_type_leakage_normal_max": "primitive_type_leakage",
@@ -31,6 +35,8 @@ DEFAULT_THRESHOLDS = {
     "react_ir_schema_success_min": 0.98,
     "semantic_ir_schema_success_min": 0.98,
     "heldout_intent_accuracy_min": 0.95,
+    "locked_typo_eval_intent_accuracy_min": 0.95,
+    "locked_typo_eval_rows_min": 1,
     "primitive_type_leakage_normal_max": 0,
     "hardware_execution_claim_max": 0,
     "raw_trajectory_output_max": 0,
@@ -49,7 +55,21 @@ def main() -> int:
     parser.add_argument("--eval-report", type=Path, default=DEFAULT_EVAL_REPORT)
     parser.add_argument("--min-rows", type=int, default=1)
     parser.add_argument("--report", type=Path, default=DEFAULT_GATE_REPORT)
+    parser.add_argument("--cloud-root", type=Path)
+    parser.add_argument("--allow-tmp", action="store_true")
     args = parser.parse_args()
+
+    try:
+        validate_cloud_run_paths(
+            cloud_root=args.cloud_root,
+            dry_run=False,
+            inputs=[args.eval_report],
+            outputs=[args.report],
+            allow_tmp=args.allow_tmp,
+        )
+    except CloudPathError as exc:
+        print(f"acceptance_blocked reason={exc} report={args.report}")
+        return 1
 
     spec = read_yaml(args.spec)
     eval_report = read_json(args.eval_report)
@@ -90,6 +110,19 @@ def evaluate_gates(
             )
         )
 
+    for gate_name, metric_name in OPTIONAL_MIN_GATES.items():
+        if gate_name in gates or metric_name in eval_report:
+            actual = eval_report.get(metric_name, 0)
+            if metric_name == "semantic_ir_success" and actual == 0:
+                actual = eval_report.get("react_ir_schema_success", actual)
+            checks.append(
+                _check_min(
+                    gate_name,
+                    actual,
+                    _threshold(gates, gate_name),
+                )
+            )
+
     react_metric_name = (
         "react_ir_schema_success"
         if "react_ir_schema_success" in eval_report
@@ -110,6 +143,26 @@ def evaluate_gates(
                 gate_name,
                 eval_report.get(metric_name, 0),
                 _threshold(gates, gate_name),
+            )
+        )
+    if (
+        "locked_typo_eval_intent_accuracy_min" in gates
+        or "locked_typo_eval_intent_accuracy" in eval_report
+    ):
+        checks.append(
+            _check_min(
+                "locked_typo_eval_intent_accuracy_min",
+                eval_report.get("locked_typo_eval_intent_accuracy", 0),
+                _threshold(gates, "locked_typo_eval_intent_accuracy_min"),
+                metric="locked_typo_eval_intent_accuracy",
+            )
+        )
+        checks.append(
+            _check_min(
+                "locked_typo_eval_rows_min",
+                eval_report.get("locked_typo_eval_rows", 0),
+                _threshold(gates, "locked_typo_eval_rows_min"),
+                metric="locked_typo_eval_rows",
             )
         )
     checks.append(

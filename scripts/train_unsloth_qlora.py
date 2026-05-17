@@ -6,7 +6,13 @@ import os
 from pathlib import Path
 from typing import Any
 
+from cloud_runtime import (
+    CloudPathError,
+    configure_cloud_caches,
+    validate_cloud_run_paths,
+)
 from factory_common import read_jsonl, read_yaml, write_json
+from package_adapter import adapter_artifact_exists
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,8 +31,30 @@ def main() -> int:
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--model-name", default="Qwen/Qwen2.5-7B-Instruct")
     parser.add_argument("--max-steps", type=int, default=None)
+    parser.add_argument("--cloud-root", type=Path)
+    parser.add_argument("--allow-tmp", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    if not args.dry_run:
+        try:
+            validate_cloud_run_paths(
+                cloud_root=args.cloud_root,
+                dry_run=False,
+                inputs=[args.train, args.val],
+                outputs=[args.output_dir, args.report],
+                allow_tmp=args.allow_tmp,
+            )
+            configure_cloud_caches(
+                cloud_root=args.cloud_root,
+                dry_run=False,
+                allow_tmp=args.allow_tmp,
+            )
+        except CloudPathError as exc:
+            if _can_write_cloud_report(args.report, args.cloud_root, args.allow_tmp):
+                write_json(args.report, {"status": "blocked", "reason": str(exc)})
+            print(f"training_blocked reason={exc} report={args.report}")
+            return 1
 
     spec = read_yaml(SPEC_PATH)
     training = _training_config(spec, max_steps=args.max_steps)
@@ -34,6 +62,7 @@ def main() -> int:
     val_rows = read_jsonl(args.val)
 
     report = {
+        "passed": bool(args.dry_run),
         "status": "dry_run_ok" if args.dry_run else "started",
         "model_name": args.model_name,
         "output_dir": str(args.output_dir),
@@ -63,9 +92,17 @@ def main() -> int:
         )
     except (ModuleNotFoundError, RuntimeError) as exc:
         report["status"] = "blocked"
+        report["passed"] = False
         report["reason"] = str(exc)
         write_json(args.report, report)
         print(f"training_blocked reason={exc} report={args.report}")
+        return 1
+    if not adapter_artifact_exists(args.output_dir):
+        report["status"] = "blocked"
+        report["passed"] = False
+        report["reason"] = "adapter artifact files are missing"
+        write_json(args.report, report)
+        print(f"training_blocked reason={report['reason']} report={args.report}")
         return 1
     return 0
 
@@ -170,6 +207,7 @@ def _train(
     report.update(
         {
             "status": "completed",
+            "passed": True,
             "train_result": getattr(train_result, "metrics", {}),
         }
     )
@@ -214,6 +252,25 @@ def _sft_config(*, output_dir: Path, training: dict[str, Any]) -> Any:
         return SFTConfig(**common_kwargs, dataset_text_field="text")
     except TypeError:
         return SFTConfig(**common_kwargs)
+
+def _can_write_cloud_report(
+    report: Path,
+    cloud_root: Path | None,
+    allow_tmp: bool,
+) -> bool:
+    if cloud_root is None:
+        return False
+    try:
+        validate_cloud_run_paths(
+            cloud_root=cloud_root,
+            dry_run=False,
+            inputs=[],
+            outputs=[report],
+            allow_tmp=allow_tmp,
+        )
+    except CloudPathError:
+        return False
+    return True
 
 
 if __name__ == "__main__":

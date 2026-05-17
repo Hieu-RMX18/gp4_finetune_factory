@@ -20,4 +20,5 @@ models/*
 reports/*.json
 reports/*.html
 !reports/.gitkeep
+artifact_downloads/*
 *.log

@@ -76,3 +76,59 @@ def test_orchestrator_tiny_dry_run_writes_manifest_and_failing_acceptance(
     )
     assert manifest["run_id"] == "dryrun"
     assert gate["passed"] is False
+
+def test_orchestrator_full_cloud_phase_dry_run_has_no_unknown_phases(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "drive" / "gp4_finetune_factory"
+    seed = tmp_path / "seed.jsonl"
+    seed.write_text("", encoding="utf-8")
+    phases = [
+        "cloud-setup",
+        "provider-probe",
+        "contract",
+        "seed-check",
+        "generate-smoke",
+        "generate-1k",
+        "quality-gate-1k",
+        "generate-30k",
+        "quality-gate-30k",
+        "generate-50k",
+        "quality-gate-50k",
+        "dedupe",
+        "split",
+        "train",
+        "infer",
+        "eval",
+        "package",
+    ]
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/cloud_orchestrator.py",
+            "--run-id",
+            "dryrun",
+            "--cloud-root",
+            str(cloud_root),
+            "--seed",
+            str(seed),
+            "--phases",
+            ",".join(phases),
+            "--dry-run",
+            "--allow-tmp",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    manifest = json.loads(
+        (cloud_root / "reports" / "run_manifest_dryrun.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert [phase["name"] for phase in manifest["phases"]] == phases
+    assert {phase["status"] for phase in manifest["phases"]} <= {"passed", "blocked"}

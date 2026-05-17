@@ -6,6 +6,7 @@ import html
 import json
 from pathlib import Path
 
+from cloud_runtime import CloudPathError, validate_cloud_run_paths
 from factory_common import read_jsonl
 
 
@@ -15,7 +16,21 @@ def main() -> int:
     )
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=Path("reports/review.html"))
+    parser.add_argument("--cloud-root", type=Path)
+    parser.add_argument("--allow-tmp", action="store_true")
     args = parser.parse_args()
+
+    try:
+        validate_cloud_run_paths(
+            cloud_root=args.cloud_root,
+            dry_run=False,
+            inputs=[args.input],
+            outputs=[args.output],
+            allow_tmp=args.allow_tmp,
+        )
+    except CloudPathError as exc:
+        print(f"review_blocked reason={exc} output={args.output}")
+        return 1
 
     rows = read_jsonl(args.input)
     args.output.parent.mkdir(parents=True, exist_ok=True)

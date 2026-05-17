@@ -10,6 +10,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from cloud_runtime import CloudPathError, validate_cloud_run_paths
 from factory_common import (
     SEMANTIC_IR_SYSTEM_PROMPT,
     read_jsonl,
@@ -36,8 +37,22 @@ def main() -> int:
     parser.add_argument("--base-url", default=os.getenv("OPENAI_BASE_URL", DEFAULT_BASE_URL))
     parser.add_argument("--temperature", type=float, default=0.4)
     parser.add_argument("--report", type=Path, default=Path("reports/generation_report.json"))
+    parser.add_argument("--cloud-root", type=Path)
+    parser.add_argument("--allow-tmp", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    try:
+        validate_cloud_run_paths(
+            cloud_root=args.cloud_root,
+            dry_run=args.dry_run,
+            inputs=[args.seed],
+            outputs=[args.output, args.report],
+            allow_tmp=args.allow_tmp,
+        )
+    except CloudPathError as exc:
+        print(f"generation_blocked reason={exc} output={args.output} report={args.report}")
+        return 1
 
     spec = read_yaml(SPEC_PATH)
     seed_rows = read_jsonl(args.seed)

@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,3 +35,30 @@ def test_probe_from_environment_detects_local_blocked() -> None:
 
     assert result.is_usable is False
     assert result.blocked_reason == "cloud storage root is not configured"
+
+def test_provider_probe_cli_requires_cloud_report_path(tmp_path: Path) -> None:
+    cloud_root = tmp_path / "cloud"
+    cloud_root.mkdir()
+    report = tmp_path / "outside" / "platform_status.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/provider_probe.py",
+            "--provider",
+            "colab",
+            "--cloud-root",
+            str(cloud_root),
+            "--report",
+            str(report),
+            "--allow-tmp",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "outside CLOUD_ROOT" in result.stdout
+    assert not report.exists()

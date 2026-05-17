@@ -6,9 +6,10 @@ import hashlib
 import zipfile
 from pathlib import Path
 
+from cloud_runtime import validate_cloud_run_paths
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT = ROOT / "artifact_downloads/gp4_finetune_factory_retrain_bundle.zip"
+DEFAULT_BUNDLE_NAME = "gp4_finetune_factory_source_bundle.zip"
 ZIP_DATE = (1980, 1, 1, 0, 0, 0)
 ZIP_FILE_MODE = 0o644 << 16
 
@@ -18,13 +19,13 @@ BUNDLE_PATTERNS = (
     "model_card.md",
     "requirements.txt",
     "configs/dataset_spec.yaml",
-    "data/generated/.gitkeep",
-    "data/generated/*.jsonl",
+    "configs/*.yaml",
     "data/seed/*.jsonl",
-    "data/splits/.gitkeep",
-    "data/splits/*.jsonl",
-    "data/validated/.gitkeep",
-    "data/validated/*.jsonl",
+    "docs/superpowers/plans/*.md",
+    "docs/superpowers/specs/*.md",
+    "notebooks/colab_gp4_react_qwen25_qlora.ipynb",
+    "notebooks/kaggle_gp4_react_qwen25_qlora.ipynb",
+    "specs/*.yaml",
     "schemas/*.json",
     "scripts/*.py",
     "tests/*.py",
@@ -33,16 +34,26 @@ BUNDLE_PATTERNS = (
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Build a deterministic ZIP bundle for the GP4 retrain run."
+        description="Build a deterministic cloud source ZIP for the GP4 retrain run."
     )
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--cloud-root", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--allow-tmp", action="store_true")
     args = parser.parse_args()
 
     paths = _collect_bundle_paths(ROOT)
-    _write_bundle(args.output, paths)
-    digest = _sha256(args.output)
+    output = args.output or args.cloud_root / "bundles" / DEFAULT_BUNDLE_NAME
+    validate_cloud_run_paths(
+        cloud_root=args.cloud_root,
+        dry_run=False,
+        inputs=paths,
+        outputs=[output],
+        allow_tmp=args.allow_tmp,
+    )
+    _write_bundle(output, paths)
+    digest = _sha256(output)
 
-    print(f"path={args.output} bytes={args.output.stat().st_size} sha256={digest}")
+    print(f"path={output} bytes={output.stat().st_size} sha256={digest}")
     return 0
 
 

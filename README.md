@@ -1,6 +1,6 @@
 # GP4 Qwen2.5 Semantic IR Fine-Tune Factory
 
-This repository builds a local, reproducible dataset and evaluation factory for fine-tuning `Qwen/Qwen2.5-7B-Instruct` to draft GP4 Semantic IR JSON for the existing `llm_gateway`.
+This repository builds a reproducible cloud-run dataset and evaluation factory for fine-tuning `Qwen/Qwen2.5-7B-Instruct` to draft GP4 Semantic IR JSON for the existing `llm_gateway`.
 
 The model is not a robot controller. Training targets must only produce Semantic IR with an `intent` field or a safe error object. Runtime execution still belongs to the ROS2 path:
 
@@ -11,6 +11,10 @@ The model is not a robot controller. Training targets must only produce Semantic
 Runtime datasets, reports, checkpoints, adapters, inference outputs, and final
 packages must be written to Google Drive or approved cloud storage. The local
 repo is for source code, tests, configs, schemas, and notebook templates only.
+Non-dry-run cloud phases require `CLOUD_ROOT`; model caches (`HF_HOME`,
+`TRANSFORMERS_CACHE`, `HF_DATASETS_CACHE`, `TORCH_HOME`, `XDG_CACHE_HOME`,
+`WANDB_DIR`, and `TMPDIR`) must resolve under that cloud root before training
+libraries are imported.
 
 ## Safety Contract
 
@@ -19,15 +23,14 @@ repo is for source code, tests, configs, schemas, and notebook templates only.
 - Ambiguous, unsafe, unknown IO, or unverified D435i object commands must become safe error payloads.
 - Synthetic generation is blocked until at least 50 handwritten seed rows pass strict validation.
 - API keys and platform tokens must stay in environment variables or platform secret managers, never in source files.
+- DeepSeek generation uses `DEEPSEEK_API_KEY` with `DEEPSEEK_BASE_URL=https://api.deepseek.com`; `OPENAI_API_KEY` is not a DeepSeek fallback.
 
 ## First-Wave Workflow
 
 ```bash
 python3 -m pip install -r requirements.txt
-make contract
 make test
-make validate-seed
-make review
+make validate-react-ir
 ```
 
 The starter seed file has only a small sample. Add handwritten examples under `data/seed/` until the seed gate reaches 50 validated rows before running any synthetic generation.
@@ -43,19 +46,28 @@ The starter seed file has only a small sample. Add handwritten examples under `d
 - `scripts/generate_batch_openai.py` currently enforces the seed gate and refuses generation until the seed set is ready.
 - `scripts/eval_model_outputs.py` computes offline JSON, Semantic IR, and intent metrics.
 
-## Browser And Training
+## Cloud Notebook Training
 
-Brave Profile 9 and `notebooks/colab_qwen25_gp4_unsloth.ipynb` are available
-for Colab/Kaggle/Lightning automation after seed review. The current imported
-pilot adapter is stored at `models/qwen25_gp4_lora_pilot`, with Colab training
-status in `reports/colab_training_status.json`.
+Use `notebooks/colab_gp4_react_qwen25_qlora.ipynb` or
+`notebooks/kaggle_gp4_react_qwen25_qlora.ipynb` with `CLOUD_ROOT` pointing at
+Google Drive, Kaggle-backed storage, or another approved cloud root. Build a
+source-only bundle directly into cloud storage:
 
-The current adapter does not pass the acceptance gates in
-`reports/acceptance_gate_report.json`. Treat it as a pilot artifact only until
-the failed Semantic IR and intent-accuracy gates pass on fresh held-out
-inference.
+```bash
+CLOUD_ROOT=/content/drive/MyDrive/gp4_finetune_factory/<run_id> make retrain-bundle
+```
 
-A refreshed retrain bundle with targeted `set_speed` and `draw_shape` coverage
-is available at `artifact_downloads/gp4_finetune_factory_retrain_bundle.zip`;
-see `reports/retrain_readiness_report.json` for the current blocker and next
-required Colab steps.
+To open the approved Colab notebook in Brave from this branch:
+
+```bash
+make open-colab-brave
+```
+
+No adapter is accepted until the cloud run writes
+`acceptance_gate_report_<run_id>.json` under `CLOUD_ROOT` with `passed=true`.
+Notebook completion or local artifact files are not acceptance evidence. After
+a cloud run finishes, audit the evidence with:
+
+```bash
+CLOUD_ROOT=/content/drive/MyDrive/gp4_finetune_factory/<run_id> RUN_ID=<run_id> make audit-cloud-run
+```

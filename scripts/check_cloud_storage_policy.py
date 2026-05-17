@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
 
+from cloud_runtime import CloudPathError, validate_cloud_output_path
+
 
 FORBIDDEN_LOCAL_PARTS = {
     "data/generated",
@@ -81,6 +83,16 @@ def main() -> int:
         cloud_roots=tuple(Path(root) for root in args.cloud_root),
         allow_tmp=args.allow_tmp,
     )
+    try:
+        validate_cloud_output_path(
+            args.report,
+            args.cloud_root[0] if args.cloud_root else None,
+            allow_tmp=args.allow_tmp,
+        )
+    except CloudPathError as exc:
+        print(str(exc))
+        return 1
+
     findings = find_local_artifact_paths(args.path, policy)
     report = write_policy_report(args.report, findings)
     print(

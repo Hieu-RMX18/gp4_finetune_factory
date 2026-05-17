@@ -57,6 +57,9 @@ def test_extract_repo_contract_reads_gp4_contract(tmp_path: Path) -> None:
         str(GP4_WS),
         "--output",
         str(output_path),
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
     )
 
     assert result.returncode == 0, result.stderr
@@ -66,6 +69,22 @@ def test_extract_repo_contract_reads_gp4_contract(tmp_path: Path) -> None:
     assert "MOVE_REL" in contract["schema_primitives"]
     assert contract["normal_output_forbids_primitive_type"] is True
     assert contract["safety"]["workspace_bounds"]["z_min"] == 0.23
+
+
+def test_extract_repo_contract_requires_cloud_output_path(tmp_path: Path) -> None:
+    output_path = tmp_path / "repo_contract.json"
+
+    result = _run(
+        "scripts/extract_repo_contract.py",
+        "--repo",
+        str(GP4_WS),
+        "--output",
+        str(output_path),
+    )
+
+    assert result.returncode == 1
+    assert "CLOUD_ROOT" in (result.stdout + result.stderr)
+    assert not output_path.exists()
 
 
 def test_validate_dataset_accepts_safe_semantic_ir_seed(tmp_path: Path) -> None:
@@ -91,6 +110,11 @@ def test_validate_dataset_accepts_safe_semantic_ir_seed(tmp_path: Path) -> None:
         "--strict",
         "--contract-repo",
         str(GP4_WS),
+        "--report",
+        str(tmp_path / "validation_report.json"),
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
     )
 
     assert result.returncode == 0, result.stderr
@@ -109,6 +133,11 @@ def test_validate_dataset_rejects_primitive_type_leakage(tmp_path: Path) -> None
         "--strict",
         "--contract-repo",
         str(GP4_WS),
+        "--report",
+        str(tmp_path / "validation_report.json"),
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
     )
 
     assert result.returncode != 0
@@ -137,10 +166,36 @@ def test_validate_dataset_rejects_hardware_execution_claim(tmp_path: Path) -> No
         "--strict",
         "--contract-repo",
         str(GP4_WS),
+        "--report",
+        str(tmp_path / "validation_report.json"),
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
     )
 
     assert result.returncode != 0
     assert "hardware execution claim" in (result.stdout + result.stderr)
+
+
+def test_validate_dataset_requires_cloud_report_path(tmp_path: Path) -> None:
+    seed_path = tmp_path / "seed.jsonl"
+    report_path = tmp_path / "validation_report.json"
+    _write_jsonl(seed_path, [_example({"intent": "stop"})])
+
+    result = _run(
+        "scripts/validate_dataset.py",
+        "--input",
+        str(seed_path),
+        "--strict",
+        "--contract-repo",
+        str(GP4_WS),
+        "--report",
+        str(report_path),
+    )
+
+    assert result.returncode == 1
+    assert "CLOUD_ROOT" in (result.stdout + result.stderr)
+    assert not report_path.exists()
 
 
 def test_dedupe_dataset_keeps_first_unique_pair(tmp_path: Path) -> None:
@@ -189,12 +244,33 @@ def test_build_splits_writes_deterministic_train_val_test(tmp_path: Path) -> Non
         "0.6",
         "--val-ratio",
         "0.2",
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
     )
 
     assert result.returncode == 0, result.stderr
     assert len(output_dir.joinpath("train.jsonl").read_text(encoding="utf-8").splitlines()) == 3
     assert len(output_dir.joinpath("val.jsonl").read_text(encoding="utf-8").splitlines()) == 1
     assert len(output_dir.joinpath("test.jsonl").read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_build_splits_requires_cloud_output_dir(tmp_path: Path) -> None:
+    input_path = tmp_path / "input.jsonl"
+    output_dir = tmp_path / "splits"
+    _write_jsonl(input_path, [_example({"intent": "stop"})])
+
+    result = _run(
+        "scripts/build_splits.py",
+        "--input",
+        str(input_path),
+        "--output-dir",
+        str(output_dir),
+    )
+
+    assert result.returncode == 1
+    assert "CLOUD_ROOT" in (result.stdout + result.stderr)
+    assert not output_dir.exists()
 
 
 def test_build_splits_keeps_rare_expected_labels_in_train(tmp_path: Path) -> None:
@@ -224,6 +300,9 @@ def test_build_splits_keeps_rare_expected_labels_in_train(tmp_path: Path) -> Non
         "0.6",
         "--val-ratio",
         "0.2",
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
     )
 
     assert result.returncode == 0, result.stderr
@@ -252,12 +331,33 @@ def test_render_review_html_escapes_user_content(tmp_path: Path) -> None:
         str(input_path),
         "--output",
         str(output_path),
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
     )
 
     assert result.returncode == 0, result.stderr
     html = output_path.read_text(encoding="utf-8")
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
     assert "<script>alert(1)</script>" not in html
+
+
+def test_render_review_html_requires_cloud_output_path(tmp_path: Path) -> None:
+    input_path = tmp_path / "input.jsonl"
+    output_path = tmp_path / "review.html"
+    _write_jsonl(input_path, [_example({"intent": "stop"})])
+
+    result = _run(
+        "scripts/render_review_html.py",
+        "--input",
+        str(input_path),
+        "--output",
+        str(output_path),
+    )
+
+    assert result.returncode == 1
+    assert "CLOUD_ROOT" in (result.stdout + result.stderr)
+    assert not output_path.exists()
 
 
 def test_generate_batch_openai_enforces_seed_gate(tmp_path: Path) -> None:
@@ -270,10 +370,35 @@ def test_generate_batch_openai_enforces_seed_gate(tmp_path: Path) -> None:
         str(seed_path),
         "--output",
         str(tmp_path / "generated.jsonl"),
+        "--report",
+        str(tmp_path / "generation_report.json"),
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
     )
 
     assert result.returncode != 0
     assert "seed gate" in (result.stdout + result.stderr)
+
+
+def test_generate_batch_openai_requires_cloud_output_path(tmp_path: Path) -> None:
+    seed_path = tmp_path / "seed.jsonl"
+    output_path = tmp_path / "generated.jsonl"
+    _write_jsonl(seed_path, [_example({"intent": "stop"})])
+
+    result = _run(
+        "scripts/generate_batch_openai.py",
+        "--seed",
+        str(seed_path),
+        "--output",
+        str(output_path),
+        "--report",
+        str(tmp_path / "generation_report.json"),
+    )
+
+    assert result.returncode == 1
+    assert "CLOUD_ROOT" in (result.stdout + result.stderr)
+    assert not output_path.exists()
 
 
 def test_eval_model_outputs_reports_json_and_intent_metrics(tmp_path: Path) -> None:
@@ -298,12 +423,88 @@ def test_eval_model_outputs_reports_json_and_intent_metrics(tmp_path: Path) -> N
         str(GP4_WS),
         "--report",
         str(report_path),
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
     )
 
     assert result.returncode == 0, result.stderr
     assert "json_parse_success=1.000" in result.stdout
     assert "intent_accuracy=1.000" in result.stdout
-    assert report_path.exists()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["locked_typo_eval_rows"] == 0
+    assert report["locked_typo_eval_intent_accuracy"] == 0.0
+
+
+def test_eval_model_outputs_uses_bundled_contract_when_repo_is_absent(
+    tmp_path: Path,
+) -> None:
+    input_path = tmp_path / "outputs.jsonl"
+    report_path = tmp_path / "eval_report.json"
+    _write_jsonl(
+        input_path,
+        [
+            {
+                "id": "eval_001",
+                "expected_json": {"intent": "stop"},
+                "model_output": "{\"intent\":\"stop\"}",
+            }
+        ],
+    )
+
+    result = _run(
+        "scripts/eval_model_outputs.py",
+        "--input",
+        str(input_path),
+        "--contract-repo",
+        str(tmp_path / "missing_gp4_ws"),
+        "--report",
+        str(report_path),
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
+    )
+
+    assert result.returncode == 0, result.stderr
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["semantic_ir_success"] == 1.0
+
+
+def test_eval_model_outputs_preserves_expected_heldout_row_count(
+    tmp_path: Path,
+) -> None:
+    input_path = tmp_path / "outputs.jsonl"
+    report_path = tmp_path / "eval_report.json"
+    _write_jsonl(
+        input_path,
+        [
+            {
+                "id": "eval_001",
+                "expected_json": {"intent": "stop"},
+                "model_output": "{\"intent\":\"stop\"}",
+            }
+        ],
+    )
+
+    result = _run(
+        "scripts/eval_model_outputs.py",
+        "--input",
+        str(input_path),
+        "--contract-repo",
+        str(GP4_WS),
+        "--report",
+        str(report_path),
+        "--heldout-test-rows",
+        "2",
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
+    )
+
+    assert result.returncode == 0, result.stderr
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["rows"] == 1
+    assert report["heldout_test_rows"] == 2
 
 
 def test_eval_model_outputs_reports_all_safety_gate_counters(tmp_path: Path) -> None:
@@ -342,6 +543,9 @@ def test_eval_model_outputs_reports_all_safety_gate_counters(tmp_path: Path) -> 
         str(GP4_WS),
         "--report",
         str(report_path),
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
     )
 
     assert result.returncode == 0, result.stderr
@@ -349,6 +553,35 @@ def test_eval_model_outputs_reports_all_safety_gate_counters(tmp_path: Path) -> 
     assert report["raw_trajectory_outputs"] == 1
     assert report["safety_bypass_outputs"] == 1
     assert report["unsafe_command_acceptance"] == 1
+
+
+def test_eval_model_outputs_requires_cloud_report_path(tmp_path: Path) -> None:
+    input_path = tmp_path / "outputs.jsonl"
+    report_path = tmp_path / "eval_report.json"
+    _write_jsonl(
+        input_path,
+        [
+            {
+                "id": "eval_001",
+                "expected_json": {"intent": "stop"},
+                "model_output": "{\"intent\":\"stop\"}",
+            }
+        ],
+    )
+
+    result = _run(
+        "scripts/eval_model_outputs.py",
+        "--input",
+        str(input_path),
+        "--contract-repo",
+        str(GP4_WS),
+        "--report",
+        str(report_path),
+    )
+
+    assert result.returncode == 1
+    assert "CLOUD_ROOT" in (result.stdout + result.stderr)
+    assert not report_path.exists()
 
 
 def test_check_acceptance_gates_fails_when_report_misses_thresholds(tmp_path: Path) -> None:
@@ -398,6 +631,9 @@ acceptance_gates:
         "11",
         "--report",
         str(tmp_path / "gate_report.json"),
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
     )
 
     assert result.returncode == 1
@@ -452,6 +688,9 @@ acceptance_gates:
         "11",
         "--report",
         str(tmp_path / "gate_report.json"),
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
     )
 
     assert result.returncode == 0, result.stderr
@@ -491,9 +730,11 @@ def test_train_unsloth_writes_blocked_report_for_runtime_failure(
 ) -> None:
     import train_unsloth_qlora
 
-    train_path = tmp_path / "train.jsonl"
-    val_path = tmp_path / "val.jsonl"
-    report_path = tmp_path / "training_report.json"
+    cloud_root = tmp_path / "cloud"
+    train_path = cloud_root / "data/splits/train.jsonl"
+    val_path = cloud_root / "data/splits/val.jsonl"
+    report_path = cloud_root / "reports/training_report.json"
+    train_path.parent.mkdir(parents=True)
     _write_jsonl(train_path, [_example({"intent": "stop"})])
     _write_jsonl(val_path, [_example({"intent": "get_pose"})])
 
@@ -511,9 +752,12 @@ def test_train_unsloth_writes_blocked_report_for_runtime_failure(
             "--val",
             str(val_path),
             "--output-dir",
-            str(tmp_path / "adapter"),
+            str(cloud_root / "models/adapter"),
             "--report",
             str(report_path),
+            "--cloud-root",
+            str(cloud_root),
+            "--allow-tmp",
         ],
     )
 
@@ -521,6 +765,49 @@ def test_train_unsloth_writes_blocked_report_for_runtime_failure(
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["status"] == "blocked"
     assert "torch" in report["reason"]
+
+
+def test_train_unsloth_blocks_when_adapter_files_are_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import train_unsloth_qlora
+
+    cloud_root = tmp_path / "cloud"
+    train_path = cloud_root / "data/splits/train.jsonl"
+    val_path = cloud_root / "data/splits/val.jsonl"
+    output_dir = cloud_root / "models/adapter"
+    report_path = cloud_root / "reports/training_report.json"
+    train_path.parent.mkdir(parents=True)
+    _write_jsonl(train_path, [_example({"intent": "stop"})])
+    _write_jsonl(val_path, [_example({"intent": "get_pose"})])
+
+    def no_op_train(**_: object) -> None:
+        output_dir.mkdir(parents=True)
+
+    monkeypatch.setattr(train_unsloth_qlora, "_train", no_op_train)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "train_unsloth_qlora.py",
+            "--train",
+            str(train_path),
+            "--val",
+            str(val_path),
+            "--output-dir",
+            str(output_dir),
+            "--report",
+            str(report_path),
+            "--cloud-root",
+            str(cloud_root),
+            "--allow-tmp",
+        ],
+    )
+
+    assert train_unsloth_qlora.main() == 1
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["status"] == "blocked"
+    assert report["reason"] == "adapter artifact files are missing"
 
 
 def test_run_adapter_inference_dry_run_reports_missing_adapter(tmp_path: Path) -> None:
@@ -548,6 +835,33 @@ def test_run_adapter_inference_dry_run_reports_missing_adapter(tmp_path: Path) -
     assert report["rows"] == 1
 
 
+def test_run_adapter_inference_rejects_incomplete_adapter_artifact(tmp_path: Path) -> None:
+    input_path = tmp_path / "test.jsonl"
+    output_path = tmp_path / "model_outputs.jsonl"
+    report_path = tmp_path / "inference_report.json"
+    adapter_dir = tmp_path / "adapter"
+    adapter_dir.mkdir()
+    (adapter_dir / "adapter_config.json").write_text("{}\n", encoding="utf-8")
+    _write_jsonl(input_path, [_example({"intent": "stop"})])
+
+    result = _run(
+        "scripts/run_adapter_inference.py",
+        "--input",
+        str(input_path),
+        "--adapter-dir",
+        str(adapter_dir),
+        "--output",
+        str(output_path),
+        "--report",
+        str(report_path),
+        "--dry-run",
+    )
+
+    assert result.returncode == 1
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["status"] == "missing_adapter"
+
+
 def test_export_unsloth_strips_local_metadata(tmp_path: Path) -> None:
     input_path = tmp_path / "seed.jsonl"
     output_path = tmp_path / "unsloth.jsonl"
@@ -559,12 +873,33 @@ def test_export_unsloth_strips_local_metadata(tmp_path: Path) -> None:
         str(input_path),
         "--output",
         str(output_path),
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
     )
 
     assert result.returncode == 0, result.stderr
     exported = json.loads(output_path.read_text(encoding="utf-8").strip())
     assert list(exported.keys()) == ["messages"]
     assert exported["messages"][-1]["content"] == "{\"intent\":\"stop\"}"
+
+
+def test_export_unsloth_requires_cloud_output_path(tmp_path: Path) -> None:
+    input_path = tmp_path / "seed.jsonl"
+    output_path = tmp_path / "local_unsloth.jsonl"
+    _write_jsonl(input_path, [_example({"intent": "stop"})])
+
+    result = _run(
+        "scripts/export_unsloth.py",
+        "--input",
+        str(input_path),
+        "--output",
+        str(output_path),
+    )
+
+    assert result.returncode == 1
+    assert "CLOUD_ROOT" in (result.stdout + result.stderr)
+    assert not output_path.exists()
 
 
 def test_dedupe_normalizes_system_prompt_for_training_rows(tmp_path: Path) -> None:
@@ -664,21 +999,41 @@ def test_validate_dataset_rejects_non_base_link_reference_frame(tmp_path: Path) 
         "--strict",
         "--contract-repo",
         str(GP4_WS),
+        "--report",
+        str(tmp_path / "validation_report.json"),
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
     )
 
     assert result.returncode != 0
     assert "reference_frame" in (result.stdout + result.stderr)
 
 
-def test_build_retrain_bundle_writes_reproducible_zip(tmp_path: Path) -> None:
-    first_output = tmp_path / "retrain_a.zip"
-    second_output = tmp_path / "retrain_b.zip"
+def test_build_retrain_bundle_requires_cloud_root(tmp_path: Path) -> None:
+    result = _run(
+        "scripts/build_retrain_bundle.py",
+        "--output",
+        str(tmp_path / "retrain.zip"),
+    )
+
+    assert result.returncode != 0
+    assert "CLOUD_ROOT" in (result.stdout + result.stderr)
+
+def test_build_retrain_bundle_writes_reproducible_cloud_source_zip(
+    tmp_path: Path,
+) -> None:
+    first_output = tmp_path / "cloud" / "bundles" / "retrain_a.zip"
+    second_output = tmp_path / "cloud" / "bundles" / "retrain_b.zip"
 
     for output_path in (first_output, second_output):
         result = _run(
             "scripts/build_retrain_bundle.py",
+            "--cloud-root",
+            str(tmp_path / "cloud"),
             "--output",
             str(output_path),
+            "--allow-tmp",
         )
 
         assert result.returncode == 0, result.stderr
@@ -690,12 +1045,21 @@ def test_build_retrain_bundle_writes_reproducible_zip(tmp_path: Path) -> None:
     with zipfile.ZipFile(first_output) as archive:
         names = archive.namelist()
         assert names == sorted(names)
-        assert "data/splits/train.jsonl" in names
-        assert "data/validated/pilot_100_validated.jsonl" in names
+        assert "data/seed/gp4_seed_starter.jsonl" in names
+        assert "notebooks/colab_gp4_react_qwen25_qlora.ipynb" in names
+        assert "notebooks/kaggle_gp4_react_qwen25_qlora.ipynb" in names
+        assert "notebooks/colab_qwen25_gp4_unsloth.ipynb" not in names
+        assert "notebooks/kaggle_qwen25_gp4_unsloth.ipynb" not in names
+        assert "notebooks/lightning_qwen25_gp4_unsloth.ipynb" not in names
         assert "scripts/train_unsloth_qlora.py" in names
         assert "Makefile" in names
+        assert not any(name.startswith("artifact_downloads/") for name in names)
+        assert not any(name.startswith("data/generated/") for name in names)
+        assert not any(name.startswith("data/splits/") for name in names)
+        assert not any(name.startswith("data/validated/") for name in names)
         assert not any(name.startswith("models/") for name in names)
         assert not any(name.startswith("reports/") for name in names)
+        assert not any(name.startswith("outputs/") for name in names)
         assert all(info.date_time == (1980, 1, 1, 0, 0, 0) for info in archive.infolist())
 
 

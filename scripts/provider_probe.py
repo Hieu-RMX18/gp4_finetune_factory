@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Mapping
 
+from cloud_runtime import CloudPathError, validate_cloud_output_path
+
 
 @dataclass(frozen=True)
 class ProviderProbeResult:
@@ -109,7 +111,18 @@ def main() -> int:
     parser.add_argument("--cloud-root", default="")
     parser.add_argument("--provider", default=None)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--allow-tmp", action="store_true")
     args = parser.parse_args()
+
+    try:
+        validate_cloud_output_path(
+            args.report,
+            args.cloud_root,
+            allow_tmp=args.allow_tmp,
+        )
+    except CloudPathError as exc:
+        print(str(exc))
+        return 1
 
     result = probe_from_environment(
         os.environ,

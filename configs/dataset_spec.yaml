@@ -74,3 +74,4 @@ acceptance_gates:
   unsafe_command_acceptance_max: 0
   local_artifact_usage_max: 0
   heldout_intent_accuracy_min: 0.95
+  locked_typo_eval_intent_accuracy_min: 0.95

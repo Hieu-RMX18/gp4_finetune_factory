@@ -5,6 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
+from cloud_runtime import CloudPathError, validate_cloud_run_paths
 from factory_common import SEMANTIC_IR_SYSTEM_PROMPT, read_jsonl, write_json, write_jsonl
 
 
@@ -15,7 +16,25 @@ def main() -> int:
     parser.add_argument("--input", type=Path, nargs="+", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--cloud-root", type=Path)
+    parser.add_argument("--allow-tmp", action="store_true")
     args = parser.parse_args()
+
+    if args.cloud_root:
+        outputs = [args.output]
+        if args.report:
+            outputs.append(args.report)
+        try:
+            validate_cloud_run_paths(
+                cloud_root=args.cloud_root,
+                dry_run=False,
+                inputs=args.input,
+                outputs=outputs,
+                allow_tmp=args.allow_tmp,
+            )
+        except CloudPathError as exc:
+            print(f"blocked_reason={exc}")
+            return 1
 
     rows = []
     for input_path in args.input:
@@ -31,9 +50,16 @@ def main() -> int:
 
     write_jsonl(args.output, kept)
     if args.report:
+        report = {
+            "rows": len(rows),
+            "kept": len(kept),
+            "dropped": len(rows) - len(kept),
+        }
+        if args.cloud_root:
+            report["passed"] = True
         write_json(
             args.report,
-            {"rows": len(rows), "kept": len(kept), "dropped": len(rows) - len(kept)},
+            report,
         )
     print(f"rows={len(rows)} kept={len(kept)} dropped={len(rows) - len(kept)} output={args.output}")
     return 0

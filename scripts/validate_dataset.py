@@ -9,6 +9,7 @@ from typing import Any
 
 from jsonschema import Draft7Validator
 
+from cloud_runtime import CloudPathError, validate_cloud_run_paths
 from factory_common import (
     DEFAULT_GP4_WS,
     ValidationIssue,
@@ -36,12 +37,25 @@ def main() -> int:
         type=Path,
         default=Path("reports/validation_report.json"),
     )
+    parser.add_argument("--cloud-root", type=Path)
+    parser.add_argument("--allow-tmp", action="store_true")
     args = parser.parse_args()
 
     input_paths = _expand_inputs(args.input)
     if not input_paths:
         print("No input files matched.")
         return 2
+    try:
+        validate_cloud_run_paths(
+            cloud_root=args.cloud_root,
+            dry_run=False,
+            inputs=input_paths,
+            outputs=[args.report],
+            allow_tmp=args.allow_tmp,
+        )
+    except CloudPathError as exc:
+        print(f"validation_blocked reason={exc} report={args.report}")
+        return 1
 
     contract = load_repo_contract(args.contract_repo)
     master_validator = Draft7Validator(read_json(MASTER_SCHEMA_PATH))

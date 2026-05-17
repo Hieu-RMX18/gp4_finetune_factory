@@ -5,7 +5,13 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from cloud_runtime import (
+    CloudPathError,
+    configure_cloud_caches,
+    validate_cloud_run_paths,
+)
 from factory_common import read_jsonl, write_json, write_jsonl
+from package_adapter import adapter_artifact_exists
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,11 +31,34 @@ def main() -> int:
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--max-seq-length", type=int, default=2048)
     parser.add_argument("--max-new-tokens", type=int, default=256)
+    parser.add_argument("--cloud-root", type=Path)
+    parser.add_argument("--allow-tmp", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
+    if not args.dry_run:
+        try:
+            validate_cloud_run_paths(
+                cloud_root=args.cloud_root,
+                dry_run=False,
+                inputs=[args.input, args.adapter_dir],
+                outputs=[args.output, args.report],
+                allow_tmp=args.allow_tmp,
+            )
+            configure_cloud_caches(
+                cloud_root=args.cloud_root,
+                dry_run=False,
+                allow_tmp=args.allow_tmp,
+            )
+        except CloudPathError as exc:
+            if _can_write_cloud_report(args.report, args.cloud_root, args.allow_tmp):
+                write_json(args.report, {"status": "blocked", "reason": str(exc)})
+            print(f"inference_blocked reason={exc} report={args.report}")
+            return 1
+
     rows = read_jsonl(args.input)
     report = {
+        "passed": False,
         "status": "started",
         "input": str(args.input),
         "adapter_dir": str(args.adapter_dir),
@@ -43,6 +72,7 @@ def main() -> int:
         return 1
     if args.dry_run:
         report["status"] = "dry_run_ok"
+        report["passed"] = True
         write_json(args.report, report)
         print(f"dry_run_ok rows={len(rows)} adapter_dir={args.adapter_dir} report={args.report}")
         return 0
@@ -63,17 +93,14 @@ def main() -> int:
 
     write_jsonl(args.output, output_rows)
     report["status"] = "completed"
+    report["passed"] = True
     write_json(args.report, report)
     print(f"rows={len(output_rows)} output={args.output} report={args.report}")
     return 0
 
 
 def _adapter_exists(adapter_dir: Path) -> bool:
-    return (
-        adapter_dir.joinpath("adapter_config.json").exists()
-        or any(adapter_dir.glob("*.safetensors"))
-        or any(adapter_dir.glob("*.bin"))
-    )
+    return adapter_artifact_exists(adapter_dir)
 
 
 def _run_inference(
@@ -127,6 +154,25 @@ def _run_inference(
             }
         )
     return output_rows
+
+def _can_write_cloud_report(
+    report: Path,
+    cloud_root: Path | None,
+    allow_tmp: bool,
+) -> bool:
+    if cloud_root is None:
+        return False
+    try:
+        validate_cloud_run_paths(
+            cloud_root=cloud_root,
+            dry_run=False,
+            inputs=[],
+            outputs=[report],
+            allow_tmp=allow_tmp,
+        )
+    except CloudPathError:
+        return False
+    return True
 
 
 if __name__ == "__main__":

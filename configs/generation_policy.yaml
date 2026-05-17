@@ -10,3 +10,13 @@ candidate_budget:
 batch:
   default_size: 50
   retry_limit: 4
+typo_noise:
+  locked_eval_source: locked_typo_eval
+  vietnamese_down_variants:
+    - di xuong
+    - di xuông
+    - đi xuong
+    - đi xuông
+    - đi xung
+    - đi xogun
+    - xuốg

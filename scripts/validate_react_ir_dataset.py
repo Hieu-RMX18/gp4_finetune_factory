@@ -35,6 +35,9 @@ def main() -> int:
         cloud_roots=tuple(Path(root) for root in args.cloud_root),
         allow_tmp=args.allow_tmp,
     )
+    if not args.cloud_root and not args.allow_tmp:
+        print("CLOUD_ROOT is required unless --allow-tmp is used for test reports.")
+        return 1
     if args.cloud_root or args.allow_tmp:
         if not is_allowed_cloud_path(args.report, policy):
             print(f"report path is not allowed by cloud storage policy: {args.report}")
