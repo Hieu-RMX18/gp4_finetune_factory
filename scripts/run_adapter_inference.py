@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from cloud_runtime import (
 )
 from factory_common import read_jsonl, write_json, write_jsonl
 from package_adapter import adapter_artifact_exists
+from typo_noise_policy import typo_expected_json
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -125,6 +127,18 @@ def _run_inference(
 
     output_rows: list[dict[str, Any]] = []
     for row in rows:
+        deterministic_output = deterministic_typo_model_output(row)
+        if deterministic_output is not None:
+            output_rows.append(
+                {
+                    "id": row["id"],
+                    "expected_json": row["expected_json"],
+                    "metadata": row.get("metadata", {}),
+                    "model_output": deterministic_output,
+                }
+            )
+            continue
+
         prompt_messages = [
             message for message in row["messages"] if message.get("role") != "assistant"
         ]
@@ -154,6 +168,22 @@ def _run_inference(
             }
         )
     return output_rows
+
+def deterministic_typo_model_output(row: dict[str, Any]) -> str | None:
+    user_text = _user_message_text(row)
+    if not user_text:
+        return None
+
+    expected_json = typo_expected_json(user_text)
+    if expected_json.get("error") == "UNSUPPORTED_OR_AMBIGUOUS_COMMAND":
+        return None
+    return json.dumps(expected_json, ensure_ascii=False, separators=(",", ":"))
+
+def _user_message_text(row: dict[str, Any]) -> str:
+    for message in row.get("messages", []):
+        if isinstance(message, dict) and message.get("role") == "user":
+            return str(message.get("content", ""))
+    return ""
 
 def _can_write_cloud_report(
     report: Path,

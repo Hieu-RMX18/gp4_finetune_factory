@@ -12,13 +12,22 @@ from factory_common import read_json, write_json
 def adapter_artifact_exists(adapter_dir: Path) -> bool:
     if not adapter_dir.is_dir():
         return False
-    has_config = adapter_dir.joinpath("adapter_config.json").is_file()
-    has_weights = any(
+    has_lora_config = adapter_dir.joinpath("adapter_config.json").is_file()
+    has_lora_weights = any(
         path.is_file() and path.stat().st_size > 0
         for pattern in ("*.safetensors", "*.bin")
         for path in adapter_dir.glob(pattern)
     )
-    return has_config and has_weights
+    if has_lora_config and has_lora_weights:
+        return True
+
+    has_model_config = adapter_dir.joinpath("config.json").is_file()
+    has_model_weights = any(
+        path.is_file() and path.stat().st_size > 0
+        for pattern in ("model*.safetensors", "pytorch_model*.bin")
+        for path in adapter_dir.glob(pattern)
+    )
+    return has_model_config and has_model_weights
 
 
 def main() -> int:

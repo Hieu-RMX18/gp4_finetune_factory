@@ -377,3 +377,43 @@ def test_package_adapter_rejects_empty_adapter_directory(tmp_path: Path) -> None
     payload = json.loads(package_report.read_text(encoding="utf-8"))
     assert payload["passed"] is False
     assert payload["blocked_reason"] == "adapter artifact files are missing"
+
+def test_package_adapter_accepts_full_model_artifacts(tmp_path: Path) -> None:
+    cloud_root = tmp_path / "cloud"
+    adapter_dir = cloud_root / "models/qwen25_gp4_lora"
+    adapter_dir.mkdir(parents=True)
+    (adapter_dir / "config.json").write_text("{}\n", encoding="utf-8")
+    (adapter_dir / "model.safetensors.index.json").write_text("{}\n", encoding="utf-8")
+    (adapter_dir / "model-00001-of-00001.safetensors").write_text(
+        "weights\n",
+        encoding="utf-8",
+    )
+    acceptance_report = cloud_root / "reports/acceptance_gate_report_run.json"
+    package_report = cloud_root / "reports/package_report_run.json"
+    acceptance_report.parent.mkdir(parents=True)
+    acceptance_report.write_text('{"passed": true}\n', encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/package_adapter.py",
+            "--adapter-dir",
+            str(adapter_dir),
+            "--acceptance-report",
+            str(acceptance_report),
+            "--cloud-root",
+            str(cloud_root),
+            "--report",
+            str(package_report),
+            "--allow-tmp",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(package_report.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    assert payload["adapter_artifact_exists"] is True

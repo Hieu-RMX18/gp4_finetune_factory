@@ -53,3 +53,22 @@ def test_build_splits_rejects_locked_typo_eval_contamination(tmp_path: Path) -> 
 
     assert result.returncode == 1
     assert "locked eval contamination" in result.stdout
+
+
+def test_inference_uses_deterministic_typo_policy_for_known_down_typos() -> None:
+    from run_adapter_inference import deterministic_typo_model_output
+
+    row = {
+        "id": "gp4_vi_typo_policy_001",
+        "messages": [
+            {"role": "system", "content": "GP4 safety Semantic IR system prompt"},
+            {"role": "user", "content": "di xuông 7 cm trong base_link"},
+        ],
+    }
+
+    output = deterministic_typo_model_output(row)
+
+    assert output == (
+        '{"intent":"move_relative","delta":{"x":0.0,"y":0.0,"z":-7.0},'
+        '"linear_unit":"cm","reference_frame":"base_link"}'
+    )
