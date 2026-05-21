@@ -37,6 +37,8 @@ ALLOWED_LOCAL_SOURCE_FILES = {
     ROOT / "README.md",
     ROOT / "model_card.md",
     ROOT / "requirements.txt",
+    ROOT / "requirements-cloud.txt",
+    ROOT / "requirements-local-adapter.txt",
 }
 
 

@@ -24,21 +24,26 @@
         "intent": {
           "type": "string",
           "enum": [
-            "home",
-            "ptp",
-            "lin",
-            "move_relative",
-            "move_joint",
-            "move_joints",
-            "set_speed",
-            "get_pose",
-            "wait",
-            "stop",
-            "sequence",
-            "draw_shape",
-            "io_set",
             "alarm_reset",
-            "safe_error"
+            "absolute_move_lin",
+            "absolute_move_ptp",
+            "circular_move",
+            "draw_shape",
+            "draw_text",
+            "get_pose",
+            "go_home",
+            "io_set",
+            "move_joint",
+            "move_joint_delta",
+            "move_joints",
+            "move_named_pose",
+            "move_relative",
+            "return_to_start",
+            "safe_error",
+            "sequence",
+            "set_speed",
+            "stop",
+            "wait"
           ]
         },
         "error_code": {
@@ -61,6 +66,34 @@
         },
         "requires_planning_scene": {
           "type": "boolean"
+        },
+        "requires_human_approval": {
+          "type": "boolean"
+        },
+        "recovery_required": {
+          "type": "boolean"
+        },
+        "scenario_tags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "singularity",
+              "wrist_flip",
+              "joint_wrap",
+              "timeout_abort_recovery",
+              "approval_required",
+              "collision_limit_edge",
+              "dangerous_os_command",
+              "unsupported_tool_hallucination",
+              "typo_noise",
+              "alias_canonicalization",
+              "vision_uncertain",
+              "normal_motion",
+              "status_query"
+            ]
+          }
         },
         "hardware_execution_claim": {
           "const": false

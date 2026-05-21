@@ -18,6 +18,8 @@ BUNDLE_PATTERNS = (
     "README.md",
     "model_card.md",
     "requirements.txt",
+    "requirements-cloud.txt",
+    "requirements-local-adapter.txt",
     "configs/dataset_spec.yaml",
     "configs/*.yaml",
     "data/seed/*.jsonl",

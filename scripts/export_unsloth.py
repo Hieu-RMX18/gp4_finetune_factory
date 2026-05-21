@@ -6,6 +6,7 @@ from pathlib import Path
 
 from cloud_runtime import CloudPathError, validate_cloud_run_paths
 from factory_common import read_jsonl, write_jsonl
+from structured_context import build_messages_from_structured_row
 
 
 def main() -> int:
@@ -31,7 +32,12 @@ def main() -> int:
         return 1
 
     rows = read_jsonl(args.input)
-    exported = [{"messages": row["messages"]} for row in rows]
+    exported = [
+        {"messages": build_messages_from_structured_row(row)}
+        if "instruction" in row and "target_output" in row
+        else {"messages": row["messages"]}
+        for row in rows
+    ]
     write_jsonl(args.output, exported)
     print(f"rows={len(rows)} output={args.output}")
     return 0

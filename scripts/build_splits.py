@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import argparse
-import json
 import random
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from cloud_runtime import CloudPathError, validate_cloud_run_paths
+from dataset_keys import dataset_identity_key
 from factory_common import read_jsonl, write_jsonl
 
 
@@ -178,18 +178,7 @@ def _find_locked_eval_contamination(
     ]
 
 def _contamination_key(row: dict[str, Any]) -> str:
-    user_content = ""
-    for message in row.get("messages", []):
-        if isinstance(message, dict) and message.get("role") == "user":
-            user_content = str(message.get("content", "")).strip().lower()
-            break
-    target = json.dumps(
-        row.get("expected_json", {}),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return f"{user_content}\n{target}"
+    return dataset_identity_key(row)
 
 
 if __name__ == "__main__":

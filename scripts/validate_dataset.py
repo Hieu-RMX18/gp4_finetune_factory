@@ -11,7 +11,6 @@ from jsonschema import Draft7Validator
 
 from cloud_runtime import CloudPathError, validate_cloud_run_paths
 from factory_common import (
-    DEFAULT_GP4_WS,
     ValidationIssue,
     load_repo_contract,
     parse_single_json_object,
@@ -30,7 +29,7 @@ def main() -> int:
         description="Validate GP4 fine-tuning JSONL rows against the local contract."
     )
     parser.add_argument("--input", nargs="+", required=True)
-    parser.add_argument("--contract-repo", type=Path, default=DEFAULT_GP4_WS)
+    parser.add_argument("--contract-repo", type=Path)
     parser.add_argument("--strict", action="store_true")
     parser.add_argument(
         "--report",
@@ -57,7 +56,11 @@ def main() -> int:
         print(f"validation_blocked reason={exc} report={args.report}")
         return 1
 
-    contract = load_repo_contract(args.contract_repo)
+    try:
+        contract = load_repo_contract(args.contract_repo)
+    except ValueError as exc:
+        print(f"validation_blocked reason={exc} report={args.report}")
+        return 1
     master_validator = Draft7Validator(read_json(MASTER_SCHEMA_PATH))
     issues: list[ValidationIssue] = []
     total_rows = 0

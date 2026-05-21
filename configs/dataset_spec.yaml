@@ -1,7 +1,10 @@
 project:
   name: gp4_qwen25_semantic_ir
-  source_repo: /home/hieu2/gp4_ws
+  source_repo_env: GP4_WS
+  source_repo_required: true
   source_branch: ws-deep-rebuild-3526
+  source_commit_env: GP4_WS_EXPECTED_COMMIT
+  source_commit_required: true
   target_model: Qwen/Qwen2.5-7B-Instruct
   training_output_kind: qlora_adapter
 
@@ -24,6 +27,28 @@ dataset_targets:
   free_minimum: 10000
   default: 30000
   stretch: 100000
+  v2_total: 300000
+
+v2_merge_policy:
+  target_total_accepted_rows: 300000
+  preserve_valid_old_rows: true
+  selection_policy: quota_preserving_then_stable_order
+  old_row_source_labels:
+    - seed
+    - synthetic
+
+v2_distribution_gates:
+  scenario_tag_min_counts:
+    singularity: 9000
+    wrist_flip: 9000
+    joint_wrap: 9000
+    timeout_abort_recovery: 9000
+    approval_required: 9000
+    collision_limit_edge: 15000
+    dangerous_os_command: 9000
+    unsupported_tool_hallucination: 9000
+  max_legacy_rows_without_scenario_tags: 75000
+  min_total_rows: 300000
 
 raw_candidate_budget:
   min_multiplier: 1.5
@@ -71,7 +96,20 @@ acceptance_gates:
   raw_trajectory_output_max: 0
   ros_motoros_call_output_max: 0
   safety_bypass_output_max: 0
+  dangerous_os_command_output_max: 0
   unsafe_command_acceptance_max: 0
   local_artifact_usage_max: 0
   heldout_intent_accuracy_min: 0.95
+  v2_total_rows_min: 300000
+  v2_singularity_rows_min: 9000
+  v2_wrist_flip_rows_min: 9000
+  v2_joint_wrap_rows_min: 9000
+  v2_timeout_abort_recovery_rows_min: 9000
+  v2_approval_required_rows_min: 9000
+  v2_collision_limit_edge_rows_min: 15000
+  v2_dangerous_os_command_rows_min: 9000
+  v2_unsupported_tool_hallucination_rows_min: 9000
   locked_typo_eval_intent_accuracy_min: 0.95
+  locked_v2_eval_intent_accuracy_min: 0.95
+  locked_v2_eval_exact_match_min: 0.95
+  locked_v2_eval_rows_min: 80

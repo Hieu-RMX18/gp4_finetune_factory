@@ -5,6 +5,15 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from benchmark_report_contract import (
+    BENCHMARK_COLUMNS,
+    REQUIRED_BENCHMARK_ROW_TOKENS,
+    REQUIRED_CHART_KEYS,
+    REQUIRED_HTML_TOKENS,
+    REQUIRED_MAINTENANCE_REFERENCE_TOKENS,
+    REQUIRED_MARKDOWN_TOKENS,
+    REQUIRED_PROVENANCE_TOKENS,
+)
 from check_acceptance_gates import evaluate_gates
 from check_cloud_storage_policy import CloudStoragePolicy, is_allowed_cloud_path
 from cloud_runtime import CloudPathError, sha256_file, validate_cloud_run_paths
@@ -14,6 +23,7 @@ from package_adapter import adapter_artifact_exists
 ROOT = Path(__file__).resolve().parents[1]
 PROVIDER_POLICY = ROOT / "configs/provider_policy.yaml"
 DATASET_SPEC = ROOT / "configs/dataset_spec.yaml"
+EXPECTED_DRIVE_ACCOUNT_EMAIL = "johnwickiller4444@gmail.com"
 LOCAL_RUNTIME_ARTIFACT_DIRS = (
     Path("artifact_downloads"),
     Path("data/generated"),
@@ -23,24 +33,27 @@ LOCAL_RUNTIME_ARTIFACT_DIRS = (
     Path("outputs"),
     Path("reports"),
 )
+MIN_EXPECTED_COMMIT_LENGTH = 12
 
 REQUIRED_PHASES = (
     "cloud-setup",
     "provider-probe",
     "contract",
     "seed-check",
+    "import-old",
+    "validate-old-v2",
+    "plan-v2-target",
     "generate-smoke",
-    "generate-1k",
-    "quality-gate-1k",
-    "generate-30k",
-    "quality-gate-30k",
-    "generate-50k",
-    "quality-gate-50k",
-    "dedupe",
+    "generate-v2",
+    "validate-new-v2",
+    "merge-accepted",
+    "quality-gate-v2",
     "split",
     "train",
     "infer",
     "eval",
+    "local-install-manifest",
+    "benchmark-report",
     "package",
 )
 
@@ -55,25 +68,34 @@ REQUIRED_ACCEPTANCE_GATES = (
     "raw_trajectory_output_max",
     "ros_motoros_call_output_max",
     "safety_bypass_output_max",
+    "dangerous_os_command_output_max",
     "unsafe_command_acceptance_max",
     "local_artifact_usage_max",
     "locked_typo_eval_intent_accuracy_min",
     "locked_typo_eval_rows_min",
+    "locked_v2_eval_intent_accuracy_min",
+    "locked_v2_eval_exact_match_min",
+    "locked_v2_eval_rows_min",
+    "v2_total_rows_min",
+    "v2_singularity_rows_min",
+    "v2_wrist_flip_rows_min",
+    "v2_joint_wrap_rows_min",
+    "v2_timeout_abort_recovery_rows_min",
+    "v2_approval_required_rows_min",
+    "v2_collision_limit_edge_rows_min",
+    "v2_dangerous_os_command_rows_min",
+    "v2_unsupported_tool_hallucination_rows_min",
     "heldout_output_rows_equal_test_rows",
     "final_adapter_exists",
 )
 
 GENERATION_PHASE_MINIMUMS = {
     "generate-smoke": 10,
-    "generate-1k": 1000,
-    "generate-30k": 30000,
-    "generate-50k": 50000,
+    "generate-v2": 1,
 }
 
 QUALITY_GATE_MINIMUMS = {
-    "quality-gate-1k": 1000,
-    "quality-gate-30k": 30000,
-    "quality-gate-50k": 50000,
+    "quality-gate-v2": 300000,
 }
 
 def main() -> int:
@@ -171,6 +193,39 @@ def audit_completion(
             str(provider_path),
         ),
         _check(
+            "provider_account_creation_automation_absent",
+            _provider_policy_flag_absent(
+                provider,
+                provider_policy,
+                "forbid_account_creation_automation",
+                "account_creation_automation",
+            ),
+            "provider policy forbids account creation automation",
+            str(provider_path),
+        ),
+        _check(
+            "provider_quota_bypass_absent",
+            _provider_policy_flag_absent(
+                provider,
+                provider_policy,
+                "forbid_quota_bypass",
+                "quota_bypass_attempt",
+            ),
+            "provider policy forbids quota bypass attempts",
+            str(provider_path),
+        ),
+        _check(
+            "provider_idle_bypass_absent",
+            _provider_policy_flag_absent(
+                provider,
+                provider_policy,
+                "forbid_idle_bypass",
+                "idle_bypass_attempt",
+            ),
+            "provider policy forbids idle bypass attempts",
+            str(provider_path),
+        ),
+        _check(
             "run_manifest_exists",
             bool(manifest),
             f"run manifest is missing or invalid: {manifest_path}",
@@ -227,6 +282,18 @@ def audit_completion(
             str(manifest_path),
         ),
         _check(
+            "drive_account_hint_verified",
+            _drive_account_hint_verified(cloud_root, policy),
+            "cloud run must record the expected Google Drive account hint",
+            str(cloud_root / "manifests/drive_account_hint.txt"),
+        ),
+        _check(
+            "colab_readiness_verified",
+            _colab_readiness_verified(cloud_root, run_id, policy),
+            "Colab preflight must prove confirmed Drive account, old dataset, and gp4_ws pin readiness",
+            str(cloud_root / "reports" / f"colab_readiness_{run_id}.json"),
+        ),
+        _check(
             "contract_phase_outputs_verified",
             _contract_phase_outputs_verified(manifest, policy),
             "contract phase report must pass and reference an existing cloud "
@@ -240,9 +307,15 @@ def audit_completion(
             str(manifest_path),
         ),
         _check(
-            "dedupe_phase_outputs_verified",
-            _dedupe_phase_outputs_verified(manifest, policy, cloud_root),
-            "dedupe report must pass with balanced row, kept, and dropped counts",
+            "merged_accepted_rows_300k",
+            _merge_accepted_rows_verified(manifest, policy, cloud_root),
+            "merge-accepted report must pass with output_rows >= 300000",
+            str(manifest_path),
+        ),
+        _check(
+            "old_dataset_reuse_verified",
+            _old_dataset_reuse_verified(manifest, policy, cloud_root),
+            "v2 run must record and keep rows from a previous accepted dataset",
             str(manifest_path),
         ),
         _check(
@@ -279,6 +352,13 @@ def audit_completion(
             str(manifest_path),
         ),
         _check(
+            "benchmark_report_visualized",
+            _benchmark_report_visualized(manifest, policy),
+            "benchmark-report phase must pass and reference an existing HTML "
+            "report with benchmark table and charts",
+            str(manifest_path),
+        ),
+        _check(
             "acceptance_report_passed",
             acceptance.get("passed") is True,
             f"acceptance report must pass: {acceptance_path}",
@@ -307,6 +387,13 @@ def audit_completion(
             _local_artifact_usage_zero(acceptance),
             "acceptance local_artifact_usage_max gate must pass with actual=0",
             str(acceptance_path),
+        ),
+        _check(
+            "local_install_manifest_ready",
+            _local_install_manifest_ready(manifest, policy),
+            "local-install-manifest phase must pass and record "
+            "install_action_performed=false",
+            str(manifest_path),
         ),
         _check(
             "local_repo_runtime_artifacts_absent",
@@ -346,12 +433,157 @@ def audit_completion(
             str(adapter_dir),
         ),
     ]
+    observed = _observed_summary(
+        cloud_root=cloud_root,
+        manifest=manifest,
+        provider_path=provider_path,
+        provider=provider,
+        eval_report_path=eval_report_path,
+        eval_report=eval_report,
+        package_path=package_path,
+        package=package,
+        adapter_dir=adapter_dir,
+        dataset_spec=dataset_spec,
+    )
     return {
         "passed": all(item["passed"] for item in checklist),
         "run_id": run_id,
         "cloud_root": str(cloud_root),
+        "observed": observed,
         "checklist": checklist,
     }
+
+def _observed_summary(
+    *,
+    cloud_root: Path,
+    manifest: dict[str, Any],
+    provider_path: Path,
+    provider: dict[str, Any],
+    eval_report_path: Path,
+    eval_report: dict[str, Any],
+    package_path: Path,
+    package: dict[str, Any],
+    adapter_dir: Path,
+    dataset_spec: dict[str, Any],
+) -> dict[str, Any]:
+    expected_branch = _expected_source_branch(dataset_spec)
+    contract = eval_report.get("contract", {})
+    if not isinstance(contract, dict):
+        contract = {}
+    local_install_path = _phase_report_path(manifest, "local-install-manifest")
+    local_install = (
+        _read_optional_json(local_install_path)
+        if local_install_path is not None
+        else {}
+    )
+    target_state = local_install.get("target_repo_state", {})
+    if not isinstance(target_state, dict):
+        target_state = {}
+    adapter = local_install.get("adapter", {})
+    if not isinstance(adapter, dict):
+        adapter = {}
+    benchmark_path = _phase_report_path(manifest, "benchmark-report")
+    benchmark = (
+        _read_optional_json(benchmark_path)
+        if benchmark_path is not None
+        else {}
+    )
+    import_old = _phase_report(manifest, "import-old", CloudStoragePolicy((cloud_root,), allow_tmp=True)) or {}
+    validate_old = _phase_report(manifest, "validate-old-v2", CloudStoragePolicy((cloud_root,), allow_tmp=True)) or {}
+    plan_v2 = _phase_report(manifest, "plan-v2-target", CloudStoragePolicy((cloud_root,), allow_tmp=True)) or {}
+    merge_accepted = _phase_report(manifest, "merge-accepted", CloudStoragePolicy((cloud_root,), allow_tmp=True)) or {}
+    return {
+        "drive_account": {
+            "hint_path": str(cloud_root / "manifests/drive_account_hint.txt"),
+            "expected": EXPECTED_DRIVE_ACCOUNT_EMAIL,
+            "verified": _drive_account_hint_verified(
+                cloud_root,
+                CloudStoragePolicy((cloud_root,), allow_tmp=True),
+            ),
+        },
+        "colab_readiness": _observed_colab_readiness(cloud_root, manifest),
+        "old_dataset_reuse": {
+            "old_dataset_count": import_old.get("old_dataset_count"),
+            "old_rows_valid": validate_old.get("old_rows_valid"),
+            "new_rows_requested": plan_v2.get("new_rows_requested"),
+            "old_rows_kept": merge_accepted.get("old_rows_kept"),
+            "old_dataset_fingerprints": import_old.get("old_dataset_fingerprints", []),
+        },
+        "provider": {
+            "report_path": str(provider_path),
+            "provider": provider.get("provider"),
+            "available": provider.get("available"),
+            "cloud_storage_ready": provider.get("cloud_storage_ready"),
+            "is_usable": provider.get("is_usable"),
+            "free_tier": provider.get("free_tier"),
+            "paid_risk": provider.get("paid_risk"),
+        },
+        "eval_contract": {
+            "report_path": str(eval_report_path),
+            "source": contract.get("source"),
+            "repo_path": contract.get("repo_path"),
+            "branch": contract.get("branch"),
+            "head": contract.get("head"),
+            "expected_branch": expected_branch,
+        },
+        "local_install": {
+            "report_path": str(local_install_path) if local_install_path else "",
+            "install_action_performed": local_install.get("install_action_performed"),
+            "ready_for_local_install": local_install.get("ready_for_local_install"),
+            "target_repo": local_install.get("target_repo"),
+            "target_repo_exists": target_state.get("exists"),
+            "target_repo_expected_branch": target_state.get("expected_branch"),
+            "target_repo_current_branch": target_state.get("current_branch"),
+            "target_repo_head": target_state.get("head"),
+            "target_repo_expected_commit": target_state.get("expected_commit"),
+            "target_repo_expected_commit_matches": target_state.get("expected_commit_matches"),
+            "target_repo_is_dirty": target_state.get("is_dirty"),
+            "adapter_path": adapter.get("path"),
+        },
+        "benchmark_reports": {
+            "phase_report_path": str(benchmark_path) if benchmark_path else "",
+            "html_report": benchmark.get("html_report"),
+            "markdown_report": benchmark.get("markdown_report"),
+        },
+        "adapter": {
+            "package_report_path": str(package_path),
+            "adapter_dir": str(adapter_dir),
+            "artifact_exists": package.get("adapter_artifact_exists"),
+            "files": _adapter_file_summary(adapter_dir, cloud_root),
+        },
+    }
+
+def _expected_source_branch(dataset_spec: dict[str, Any]) -> str:
+    project = dataset_spec.get("project", {})
+    if not isinstance(project, dict):
+        return ""
+    return str(project.get("source_branch", ""))
+
+def _adapter_file_summary(adapter_dir: Path, cloud_root: Path) -> list[dict[str, Any]]:
+    if not adapter_dir.is_dir():
+        return []
+    summaries: list[dict[str, Any]] = []
+    for path in sorted(adapter_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        try:
+            relative_path = path.relative_to(adapter_dir).as_posix()
+            size_bytes = path.stat().st_size
+        except OSError:
+            continue
+        try:
+            cloud_relative_path = path.relative_to(cloud_root).as_posix()
+        except ValueError:
+            cloud_relative_path = ""
+        summaries.append(
+            {
+                "path": relative_path,
+                "cloud_relative_path": cloud_relative_path,
+                "size_bytes": size_bytes,
+                "sha256": sha256_file(path),
+            }
+        )
+    return summaries
 
 def _read_optional_json(path: Path) -> dict[str, Any]:
     if not path.exists():
@@ -392,6 +624,19 @@ def _provider_free_or_trial(
     if policy.get("forbid_paid_fallback") is True and provider.get("paid_risk") is not False:
         return False
     return True
+
+def _provider_policy_flag_absent(
+    provider: dict[str, Any],
+    provider_policy: dict[str, Any],
+    policy_key: str,
+    provider_key: str,
+) -> bool:
+    policy = provider_policy.get("providers", {})
+    if not isinstance(policy, dict):
+        return False
+    if policy.get(policy_key) is not True:
+        return True
+    return provider.get(provider_key) is not True
 
 def _required_phases_passed(manifest: dict[str, Any]) -> bool:
     phases = {
@@ -481,6 +726,92 @@ def _source_plan_cloud_copy_verified(
         return False
     return sha256_file(source_plan_path) == str(expected_sha)
 
+
+def _drive_account_hint_verified(
+    cloud_root: Path,
+    policy: CloudStoragePolicy,
+) -> bool:
+    hint_path = cloud_root / "manifests/drive_account_hint.txt"
+    if not _cloud_file_exists(hint_path, policy):
+        return False
+    try:
+        hint = hint_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return False
+    return hint == EXPECTED_DRIVE_ACCOUNT_EMAIL
+
+
+def _colab_readiness_verified(
+    cloud_root: Path,
+    run_id: str,
+    policy: CloudStoragePolicy,
+) -> bool:
+    report_path = cloud_root / "reports" / f"colab_readiness_{run_id}.json"
+    if not _cloud_file_exists(report_path, policy):
+        return False
+    report = _read_optional_json(report_path)
+    old_dataset_policy = CloudStoragePolicy(
+        (cloud_root, cloud_root.parent),
+        allow_tmp=policy.allow_tmp,
+    )
+    drive_account = report.get("drive_account", {})
+    old_dataset = report.get("old_dataset", {})
+    gp4_ws = report.get("gp4_ws", {})
+    if not all(isinstance(item, dict) for item in (drive_account, old_dataset, gp4_ws)):
+        return False
+    old_dataset_path = Path(str(old_dataset.get("path") or ""))
+    return (
+        report.get("passed") is True
+        and drive_account.get("matches_expected") is True
+        and drive_account.get("email") == EXPECTED_DRIVE_ACCOUNT_EMAIL
+        and drive_account.get("confirmed") is True
+        and drive_account.get("confirmed_email") == EXPECTED_DRIVE_ACCOUNT_EMAIL
+        and old_dataset.get("exists") is True
+        and old_dataset.get("allowed_cloud_path") is True
+        and _int_value(old_dataset.get("rows")) > 0
+        and _cloud_file_exists(old_dataset_path, old_dataset_policy)
+        and gp4_ws.get("branch") == gp4_ws.get("expected_branch")
+        and gp4_ws.get("expected_branch") == _expected_source_branch(_read_optional_yaml(DATASET_SPEC))
+        and bool(gp4_ws.get("head"))
+        and bool(gp4_ws.get("expected_commit"))
+        and gp4_ws.get("expected_commit_matches") is True
+        and _commit_matches(
+            str(gp4_ws.get("head") or ""),
+            str(gp4_ws.get("expected_commit") or ""),
+        )
+        and gp4_ws.get("is_dirty") is False
+        and report.get("install_action_performed") is False
+    )
+
+
+def _observed_colab_readiness(
+    cloud_root: Path,
+    manifest: dict[str, Any],
+) -> dict[str, Any]:
+    run_id = str(manifest.get("run_id") or "")
+    report = _read_optional_json(cloud_root / "reports" / f"colab_readiness_{run_id}.json")
+    old_dataset = report.get("old_dataset", {})
+    if not isinstance(old_dataset, dict):
+        old_dataset = {}
+    gp4_ws = report.get("gp4_ws", {})
+    if not isinstance(gp4_ws, dict):
+        gp4_ws = {}
+    drive_account = report.get("drive_account", {})
+    if not isinstance(drive_account, dict):
+        drive_account = {}
+    return {
+        "passed": report.get("passed"),
+        "drive_account_matches": drive_account.get("matches_expected"),
+        "drive_account_confirmed": drive_account.get("confirmed"),
+        "old_dataset_path": old_dataset.get("path"),
+        "old_dataset_rows": old_dataset.get("rows"),
+        "gp4_ws_path": gp4_ws.get("path"),
+        "gp4_ws_branch": gp4_ws.get("branch"),
+        "gp4_ws_expected_commit": gp4_ws.get("expected_commit"),
+        "gp4_ws_expected_commit_matches": gp4_ws.get("expected_commit_matches"),
+    }
+
+
 def _contract_phase_outputs_verified(
     manifest: dict[str, Any],
     policy: CloudStoragePolicy,
@@ -535,6 +866,68 @@ def _dedupe_phase_outputs_verified(
         and _cloud_file_exists(cloud_root / "data/validated/accepted.jsonl", policy)
     )
 
+def _merge_accepted_rows_verified(
+    manifest: dict[str, Any],
+    policy: CloudStoragePolicy,
+    cloud_root: Path,
+) -> bool:
+    report = _phase_report(manifest, "merge-accepted", policy)
+    if report is None or report.get("passed") is not True:
+        return False
+    return (
+        _int_value(report.get("output_rows")) >= 300000
+        and _cloud_file_exists(
+            cloud_root / "data/validated/accepted_300k.jsonl",
+            policy,
+        )
+    )
+
+
+def _old_dataset_reuse_verified(
+    manifest: dict[str, Any],
+    policy: CloudStoragePolicy,
+    cloud_root: Path,
+) -> bool:
+    import_report = _phase_report(manifest, "import-old", policy)
+    validate_report = _phase_report(manifest, "validate-old-v2", policy)
+    plan_report = _phase_report(manifest, "plan-v2-target", policy)
+    merge_report = _phase_report(manifest, "merge-accepted", policy)
+    if not all(
+        isinstance(report, dict) and report.get("passed") is True
+        for report in (import_report, validate_report, plan_report, merge_report)
+    ):
+        return False
+    assert import_report is not None
+    assert validate_report is not None
+    assert plan_report is not None
+    assert merge_report is not None
+    fingerprints = import_report.get("old_dataset_fingerprints", [])
+    if not isinstance(fingerprints, list) or not fingerprints:
+        return False
+    for fingerprint in fingerprints:
+        if not isinstance(fingerprint, dict):
+            return False
+        path = Path(str(fingerprint.get("path") or ""))
+        if not _cloud_file_exists(path, policy):
+            return False
+        if str(fingerprint.get("sha256") or "") != sha256_file(path):
+            return False
+        if _int_value(fingerprint.get("rows")) <= 0:
+            return False
+    old_validated_path = Path(str(validate_report.get("old_validated_merged_path") or ""))
+    target_rows = _int_value(plan_report.get("target_rows"))
+    return (
+        _int_value(import_report.get("old_dataset_count")) > 0
+        and _int_value(validate_report.get("old_rows_valid")) > 0
+        and _cloud_file_exists(old_validated_path, policy)
+        and target_rows >= 300000
+        and _int_value(plan_report.get("new_rows_requested")) < target_rows
+        and _int_value(merge_report.get("old_rows_input")) > 0
+        and _int_value(merge_report.get("old_rows_kept")) > 0
+        and _cloud_file_exists(cloud_root / "data/validated/accepted_300k.jsonl", policy)
+    )
+
+
 def _split_phase_outputs_verified(
     manifest: dict[str, Any],
     policy: CloudStoragePolicy,
@@ -543,12 +936,17 @@ def _split_phase_outputs_verified(
     report = _phase_report(manifest, "split", policy)
     if report is None or report.get("passed") is not True:
         return False
+    merge_report = _phase_report(manifest, "merge-accepted", policy)
+    if merge_report is None or merge_report.get("passed") is not True:
+        return False
+    expected_rows = _int_value(merge_report.get("output_rows"))
     rows = _int_value(report.get("rows"))
     train = _int_value(report.get("train"))
     validation = _int_value(report.get("validation"))
     test = _int_value(report.get("test"))
     return (
-        rows > 0
+        rows >= 300000
+        and rows == expected_rows
         and train > 0
         and validation > 0
         and test > 0
@@ -660,11 +1058,47 @@ def _eval_phase_outputs_verified(
         return False
     if not is_allowed_cloud_path(phase_acceptance_path, policy):
         return False
+    eval_report = _read_optional_json(eval_report_path)
+    expected_commit = _local_install_expected_commit(manifest, policy)
     return (
         phase_eval_path.resolve(strict=False) == eval_report_path.resolve(strict=False)
         and phase_acceptance_path.resolve(strict=False)
         == acceptance_path.resolve(strict=False)
         and eval_report_path.exists()
+        and _eval_contract_verified(eval_report, expected_commit=expected_commit)
+    )
+
+def _local_install_expected_commit(
+    manifest: dict[str, Any],
+    policy: CloudStoragePolicy,
+) -> str:
+    report = _phase_report(manifest, "local-install-manifest", policy)
+    if report is None:
+        return ""
+    target_state = report.get("target_repo_state", {})
+    if not isinstance(target_state, dict):
+        return ""
+    return str(target_state.get("expected_commit") or "")
+
+
+def _eval_contract_verified(
+    eval_report: dict[str, Any],
+    *,
+    expected_commit: str,
+) -> bool:
+    contract = eval_report.get("contract", {})
+    if not isinstance(contract, dict):
+        return False
+    expected_branch = str(
+        _read_optional_yaml(DATASET_SPEC).get("project", {}).get("source_branch", "")
+    )
+    return (
+        contract.get("source") == "repo"
+        and bool(contract.get("repo_path"))
+        and bool(expected_branch)
+        and contract.get("branch") == expected_branch
+        and bool(contract.get("head"))
+        and _commit_matches(str(contract.get("head") or ""), expected_commit)
     )
 
 def _package_acceptance_report_verified(
@@ -680,6 +1114,80 @@ def _package_acceptance_report_verified(
         return False
     return package_acceptance_path.resolve(strict=False) == acceptance_path.resolve(strict=False)
 
+def _benchmark_report_visualized(
+    manifest: dict[str, Any],
+    policy: CloudStoragePolicy,
+) -> bool:
+    report = _phase_report(manifest, "benchmark-report", policy)
+    if report is None or report.get("passed") is not True:
+        return False
+    if report.get("benchmark_columns") != list(BENCHMARK_COLUMNS):
+        return False
+    benchmark_rows = report.get("benchmark_rows")
+    charts = report.get("charts", {})
+    if not isinstance(benchmark_rows, list) or not benchmark_rows:
+        return False
+    benchmark_metrics = [
+        str(row.get("metric") or "")
+        for row in benchmark_rows
+        if isinstance(row, dict)
+    ]
+    if not all(
+        any(token in metric for metric in benchmark_metrics)
+        for token in REQUIRED_BENCHMARK_ROW_TOKENS
+    ):
+        return False
+    if not isinstance(charts, dict):
+        return False
+    if not all(key in charts for key in REQUIRED_CHART_KEYS):
+        return False
+    html_report = report.get("html_report")
+    if not html_report:
+        return False
+    html_path = Path(str(html_report))
+    if not _cloud_file_exists(html_path, policy):
+        return False
+    try:
+        html = html_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    markdown_report = report.get("markdown_report")
+    if not markdown_report:
+        return False
+    markdown_path = Path(str(markdown_report))
+    if not _cloud_file_exists(markdown_path, policy):
+        return False
+    try:
+        markdown = markdown_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    maintenance_markdown = _markdown_section(markdown, "Maintenance Reference")
+    return (
+        all(item in html for item in REQUIRED_HTML_TOKENS)
+        and all(item in markdown for item in REQUIRED_MARKDOWN_TOKENS)
+        and all(item in html for item in REQUIRED_BENCHMARK_ROW_TOKENS)
+        and all(item in markdown for item in REQUIRED_BENCHMARK_ROW_TOKENS)
+        and all(item in html for item in REQUIRED_PROVENANCE_TOKENS)
+        and all(item in markdown for item in REQUIRED_PROVENANCE_TOKENS)
+        and all(item in html for item in REQUIRED_MAINTENANCE_REFERENCE_TOKENS)
+        and all(
+            item in maintenance_markdown
+            for item in REQUIRED_MAINTENANCE_REFERENCE_TOKENS
+        )
+    )
+
+
+def _markdown_section(markdown: str, heading: str) -> str:
+    start_token = f"## {heading}"
+    start = markdown.find(start_token)
+    if start == -1:
+        return ""
+    next_start = markdown.find("\n## ", start + len(start_token))
+    if next_start == -1:
+        return markdown[start:]
+    return markdown[start:next_start]
+
+
 def _local_artifact_usage_zero(acceptance: dict[str, Any]) -> bool:
     checks = acceptance.get("checks", [])
     if not isinstance(checks, list):
@@ -691,6 +1199,42 @@ def _local_artifact_usage_zero(acceptance: dict[str, Any]) -> bool:
             continue
         return check.get("passed") is True and check.get("actual") == 0
     return False
+
+def _local_install_manifest_ready(
+    manifest: dict[str, Any],
+    policy: CloudStoragePolicy,
+) -> bool:
+    report = _phase_report(manifest, "local-install-manifest", policy)
+    if report is None:
+        return False
+    target_state = report.get("target_repo_state", {})
+    if not isinstance(target_state, dict):
+        return False
+    return (
+        report.get("passed") is True
+        and report.get("ready_for_local_install") is True
+        and report.get("install_action_performed") is False
+        and target_state.get("exists") is True
+        and bool(target_state.get("expected_branch"))
+        and target_state.get("current_branch") == target_state.get("expected_branch")
+        and bool(target_state.get("head"))
+        and bool(target_state.get("expected_commit"))
+        and target_state.get("expected_commit_matches") is True
+        and _commit_matches(
+            str(target_state.get("head_full") or target_state.get("head") or ""),
+            str(target_state.get("expected_commit") or ""),
+        )
+        and target_state.get("is_dirty") is False
+    )
+
+
+def _commit_matches(head: str, expected_commit: str) -> bool:
+    head = head.strip().lower()
+    expected_commit = expected_commit.strip().lower()
+    if not head or len(expected_commit) < MIN_EXPECTED_COMMIT_LENGTH:
+        return False
+    return head.startswith(expected_commit)
+
 
 def _acceptance_required_gates_passed(acceptance: dict[str, Any]) -> bool:
     checks = acceptance.get("checks", [])

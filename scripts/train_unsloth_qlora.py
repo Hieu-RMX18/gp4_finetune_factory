@@ -12,6 +12,7 @@ from cloud_runtime import (
     configure_cloud_caches,
     validate_cloud_run_paths,
 )
+from check_cloud_storage_policy import CloudStoragePolicy, is_allowed_cloud_path
 from factory_common import read_jsonl, read_yaml, write_json
 from package_adapter import adapter_artifact_exists
 
@@ -32,6 +33,7 @@ def main() -> int:
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--model-name", default="Qwen/Qwen2.5-7B-Instruct")
     parser.add_argument("--max-steps", type=int, default=None)
+    parser.add_argument("--resume-from-adapter", type=Path)
     parser.add_argument("--cloud-root", type=Path)
     parser.add_argument("--allow-tmp", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -51,6 +53,11 @@ def main() -> int:
                 dry_run=False,
                 allow_tmp=args.allow_tmp,
             )
+            _validate_resume_adapter(
+                args.resume_from_adapter,
+                cloud_root=args.cloud_root,
+                allow_tmp=args.allow_tmp,
+            )
         except CloudPathError as exc:
             if _can_write_cloud_report(args.report, args.cloud_root, args.allow_tmp):
                 write_json(args.report, {"status": "blocked", "reason": str(exc)})
@@ -61,6 +68,11 @@ def main() -> int:
     training = _training_config(spec, max_steps=args.max_steps)
     train_rows = read_jsonl(args.train)
     val_rows = read_jsonl(args.val)
+    resume_metadata = _resume_adapter_metadata(
+        args.resume_from_adapter,
+        cloud_root=args.cloud_root,
+        allow_tmp=args.allow_tmp,
+    )
 
     report = {
         "passed": bool(args.dry_run),
@@ -72,6 +84,7 @@ def main() -> int:
         "train_rows": len(train_rows),
         "val_rows": len(val_rows),
         "training": training,
+        **resume_metadata,
     }
     if args.dry_run:
         write_json(args.report, report)
@@ -90,6 +103,7 @@ def main() -> int:
             training=training,
             report_path=args.report,
             report=report,
+            resume_from_adapter=args.resume_from_adapter,
         )
     except Exception as exc:
         report["status"] = "blocked"
@@ -136,6 +150,7 @@ def _train(
     training: dict[str, Any],
     report_path: Path,
     report: dict[str, Any],
+    resume_from_adapter: Path | None,
 ) -> None:
     import torch
     from datasets import Dataset
@@ -146,31 +161,33 @@ def _train(
         raise RuntimeError("CUDA GPU is required for Qwen2.5-7B 4-bit QLoRA training.")
 
     token = os.getenv("HF_TOKEN") or None
+    load_source = str(resume_from_adapter) if resume_from_adapter is not None else model_name
     model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=model_name,
+        model_name=load_source,
         max_seq_length=training["max_seq_length"],
         dtype=None,
         load_in_4bit=training["load_in_4bit"],
         token=token,
     )
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r=training["r"],
-        target_modules=[
-            "q_proj",
-            "k_proj",
-            "v_proj",
-            "o_proj",
-            "gate_proj",
-            "up_proj",
-            "down_proj",
-        ],
-        lora_alpha=training["alpha"],
-        lora_dropout=training["dropout"],
-        bias="none",
-        use_gradient_checkpointing="unsloth",
-        random_state=training["seed"],
-    )
+    if resume_from_adapter is None:
+        model = FastLanguageModel.get_peft_model(
+            model,
+            r=training["r"],
+            target_modules=[
+                "q_proj",
+                "k_proj",
+                "v_proj",
+                "o_proj",
+                "gate_proj",
+                "up_proj",
+                "down_proj",
+            ],
+            lora_alpha=training["alpha"],
+            lora_dropout=training["dropout"],
+            bias="none",
+            use_gradient_checkpointing="unsloth",
+            random_state=training["seed"],
+        )
 
     train_dataset = Dataset.from_list(
         _tokenize_training_rows(read_jsonl(train_path), tokenizer, training["max_seq_length"])
@@ -257,6 +274,54 @@ def _training_args(
         dataloader_num_workers=0,
         report_to=[],
     )
+
+def _validate_resume_adapter(
+    resume_from_adapter: Path | None,
+    *,
+    cloud_root: Path | None,
+    allow_tmp: bool,
+) -> None:
+    if resume_from_adapter is None:
+        return
+    if cloud_root is None:
+        raise CloudPathError("CLOUD_ROOT is required when reusing a previous adapter.")
+    policy = CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=allow_tmp)
+    if not is_allowed_cloud_path(resume_from_adapter, policy):
+        raise CloudPathError(
+            f"resume adapter path is outside approved cloud storage: {resume_from_adapter}"
+        )
+    if not adapter_artifact_exists(resume_from_adapter):
+        raise CloudPathError(
+            f"resume adapter artifact files are missing: {resume_from_adapter}"
+        )
+
+def _resume_adapter_metadata(
+    resume_from_adapter: Path | None,
+    *,
+    cloud_root: Path | None,
+    allow_tmp: bool,
+) -> dict[str, Any]:
+    if resume_from_adapter is None:
+        return {
+            "resume_from_adapter": "",
+            "resume_from_adapter_allowed_cloud_path": False,
+            "resume_from_adapter_artifact_exists": False,
+        }
+    policy = (
+        CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=allow_tmp)
+        if cloud_root is not None
+        else CloudStoragePolicy((), allow_tmp=allow_tmp)
+    )
+    return {
+        "resume_from_adapter": str(resume_from_adapter),
+        "resume_from_adapter_allowed_cloud_path": is_allowed_cloud_path(
+            resume_from_adapter,
+            policy,
+        ),
+        "resume_from_adapter_artifact_exists": adapter_artifact_exists(
+            resume_from_adapter
+        ),
+    }
 
 def _can_write_cloud_report(
     report: Path,

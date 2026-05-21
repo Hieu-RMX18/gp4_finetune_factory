@@ -19,6 +19,9 @@ class ProviderProbeResult:
     free_tier: bool
     paid_risk: bool
     blocked_reason: str
+    account_creation_automation: bool = False
+    quota_bypass_attempt: bool = False
+    idle_bypass_attempt: bool = False
 
     @property
     def is_usable(self) -> bool:
@@ -27,6 +30,9 @@ class ProviderProbeResult:
             and self.cloud_storage_ready
             and self.free_tier
             and not self.paid_risk
+            and not self.account_creation_automation
+            and not self.quota_bypass_attempt
+            and not self.idle_bypass_attempt
             and not self.blocked_reason
         )
 
@@ -66,12 +72,21 @@ def probe_from_environment(
 
     root = Path(cloud_root).expanduser()
     paid_risk = env.get("PAID_PROVIDER_CONFIRMED") == "1"
+    account_creation_automation = env.get("ACCOUNT_CREATION_AUTOMATION") == "1"
+    quota_bypass_attempt = env.get("QUOTA_BYPASS_ATTEMPT") == "1"
+    idle_bypass_attempt = env.get("IDLE_BYPASS_ATTEMPT") == "1"
     cloud_ready = root.exists()
     blocked_reason = ""
     if paid_risk:
         blocked_reason = "paid provider configuration is forbidden"
     elif not cloud_ready:
         blocked_reason = f"cloud storage root is not mounted: {cloud_root}"
+    elif account_creation_automation:
+        blocked_reason = "account creation automation is forbidden"
+    elif quota_bypass_attempt:
+        blocked_reason = "quota bypass attempts are forbidden"
+    elif idle_bypass_attempt:
+        blocked_reason = "idle bypass attempts are forbidden"
 
     return ProviderProbeResult(
         provider=detected_provider,
@@ -80,6 +95,9 @@ def probe_from_environment(
         free_tier=env.get("FREE_TIER_CONFIRMED", "1") != "0",
         paid_risk=paid_risk,
         blocked_reason=blocked_reason,
+        account_creation_automation=account_creation_automation,
+        quota_bypass_attempt=quota_bypass_attempt,
+        idle_bypass_attempt=idle_bypass_attempt,
     )
 
 

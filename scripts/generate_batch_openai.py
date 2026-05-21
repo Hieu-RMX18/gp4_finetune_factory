@@ -8,7 +8,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from cloud_runtime import CloudPathError, validate_cloud_run_paths
 from factory_common import (
@@ -18,11 +18,17 @@ from factory_common import (
     write_json,
     write_jsonl,
 )
+from path_config import resolve_gp4_ws
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC_PATH = ROOT / "configs/dataset_spec.yaml"
 DEFAULT_BASE_URL = "http://localhost:20128/v1"
+
+
+def _resolve_base_url(env: Mapping[str, str]) -> str:
+    raw_value = env.get("OPENAI_BASE_URL", "")
+    return raw_value.strip() or DEFAULT_BASE_URL
 
 
 def main() -> int:
@@ -34,7 +40,7 @@ def main() -> int:
     parser.add_argument("--count", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=10)
     parser.add_argument("--model", default=os.getenv("OPENAI_MODEL", "gpt-5.4"))
-    parser.add_argument("--base-url", default=os.getenv("OPENAI_BASE_URL", DEFAULT_BASE_URL))
+    parser.add_argument("--base-url", default=_resolve_base_url(os.environ))
     parser.add_argument("--temperature", type=float, default=0.4)
     parser.add_argument("--report", type=Path, default=Path("reports/generation_report.json"))
     parser.add_argument("--cloud-root", type=Path)
@@ -88,7 +94,7 @@ def main() -> int:
         base_url=args.base_url,
         model=args.model,
         temperature=args.temperature,
-        contract_repo=Path(spec["project"]["source_repo"]),
+        contract_repo=_resolve_contract_repo(spec, env=os.environ),
     )
     write_jsonl(args.output, rows)
     write_json(
@@ -161,6 +167,23 @@ def generate_examples(
     return _renumber_generated_rows(generated[:count])
 
 
+def _resolve_contract_repo(spec: dict[str, Any], *, env: Mapping[str, str]) -> Path:
+    project = spec.get("project", {})
+    if not isinstance(project, dict):
+        raise ValueError("configs/dataset_spec.yaml project section must be a mapping.")
+    env_name = str(project.get("source_repo_env", "GP4_WS")).strip() or "GP4_WS"
+    raw_value = (env.get(env_name) or "").strip()
+    if not raw_value and env_name == "GP4_WS":
+        return resolve_gp4_ws(cli_value=None, env=env)
+    if not raw_value:
+        raise ValueError(
+            f"{env_name} is required; set the environment variable to the GP4 source workspace path."
+        )
+    if env_name == "GP4_WS":
+        return resolve_gp4_ws(cli_value=raw_value, env={})
+    return Path(raw_value).expanduser().resolve(strict=False)
+
+
 def _chat_completion(
     *, base_url: str, api_key: str, model: str, payload: dict[str, Any]
 ) -> dict[str, Any]:
@@ -209,7 +232,7 @@ def _generation_messages(
                 f"Create {count} new diverse GP4 dataset rows for batch {batch_index}. "
                 "Use Vietnamese, English, and mixed commands. Include normal, ambiguous, hard-negative, status, and vision_stub rows. "
                 "Do not copy seed IDs. IDs can be temporary; the local script will renumber them. "
-                "Allowed normal intents only: go_home, stop, alarm_reset, get_pose, set_speed, wait, move_relative, absolute_move_ptp, move_named_pose, absolute_move_lin, circular_move, move_joint, move_joints, io_set, draw_shape, draw_text, sequence, return_to_start only inside sequence steps. "
+                "Allowed normal intents only: go_home, stop, alarm_reset, get_pose, set_speed, wait, move_relative, absolute_move_ptp, move_named_pose, absolute_move_lin, circular_move, move_joint, move_joint_delta, move_joints, io_set, draw_shape, draw_text, sequence, return_to_start only inside sequence steps. "
                 "Use reference_frame base_link only. For io_set use io_address integer and io_value 0 or 1 only. For move_joint use joint_index 0..5 and joint_angle. For move_joints use joint_target with six numbers. "
                 "Allowed safe errors only: MISSING_SLOT, UNSUPPORTED_OR_AMBIGUOUS_COMMAND, UNSAFE_COMMAND, PERCEPTION_REQUIRED, CALIBRATION_REQUIRED. "
                 "Never include primitive_type, raw trajectories, ROS commands, MotoROS2 calls, or claims that hardware moved. "

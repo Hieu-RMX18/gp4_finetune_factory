@@ -36,6 +36,21 @@ def test_probe_from_environment_detects_local_blocked() -> None:
     assert result.is_usable is False
     assert result.blocked_reason == "cloud storage root is not configured"
 
+def test_probe_from_environment_blocks_account_creation_automation(
+    tmp_path: Path,
+) -> None:
+    result = probe_from_environment(
+        {
+            "HOME": "/root",
+            "ACCOUNT_CREATION_AUTOMATION": "1",
+        },
+        cloud_root=str(tmp_path),
+    )
+
+    assert result.is_usable is False
+    assert result.account_creation_automation is True
+    assert result.blocked_reason == "account creation automation is forbidden"
+
 def test_provider_probe_cli_requires_cloud_report_path(tmp_path: Path) -> None:
     cloud_root = tmp_path / "cloud"
     cloud_root.mkdir()

@@ -15,7 +15,9 @@ from factory_common import (
     find_forbidden_text,
     parse_single_json_object,
     read_json,
+    read_yaml,
 )
+from v2_taxonomy import distribution_summary, invalid_scenario_tags, quota_failures
 
 ROOT = Path(__file__).resolve().parents[1]
 MASTER_SCHEMA_PATH = ROOT / "schemas/master_example.schema.json"
@@ -29,6 +31,8 @@ def main() -> int:
     parser.add_argument("--cloud-root", action="append", default=[])
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("--allow-tmp", action="store_true")
+    parser.add_argument("--distribution-spec", type=Path)
+    parser.add_argument("--enforce-v2-distribution", action="store_true")
     args = parser.parse_args()
 
     policy = CloudStoragePolicy(
@@ -46,10 +50,12 @@ def main() -> int:
     master_validator = Draft7Validator(read_json(MASTER_SCHEMA_PATH))
     react_validator = Draft7Validator(read_json(REACT_SCHEMA_PATH))
     issues: list[dict[str, Any]] = []
+    valid_rows_for_distribution: list[dict[str, Any]] = []
     total_rows = 0
 
     for input_path in _expand_inputs(args.input):
         for line_number, row, parse_error in _iter_jsonl(input_path):
+            total_rows += 1
             if parse_error:
                 issues.append(
                     {
@@ -60,13 +66,15 @@ def main() -> int:
                     }
                 )
                 continue
-            total_rows += 1
             row_id = str(row.get("id", "<missing-id>"))
-            for message in validate_row(
+            row_issues = validate_row(
                 row,
                 react_validator=react_validator,
                 master_validator=master_validator,
-            ):
+            )
+            if not row_issues:
+                valid_rows_for_distribution.append(row)
+            for message in row_issues:
                 issues.append(
                     {
                         "file": str(input_path),
@@ -76,14 +84,55 @@ def main() -> int:
                     }
                 )
 
-    report = write_validation_report(args.report, total_rows, issues)
+    distribution = distribution_summary(valid_rows_for_distribution)
+    quota_issues: list[dict[str, Any]] = []
+    if args.enforce_v2_distribution:
+        if not args.distribution_spec:
+            print("--distribution-spec is required with --enforce-v2-distribution")
+            return 1
+        try:
+            spec = read_yaml(args.distribution_spec)
+        except Exception as exc:
+            print(f"invalid distribution spec: {exc}")
+            return 1
+        gates = spec.get("v2_distribution_gates")
+        if not isinstance(gates, dict):
+            print("distribution spec must contain a v2_distribution_gates mapping")
+            return 1
+        minimums = gates.get("scenario_tag_min_counts", {})
+        if not isinstance(minimums, dict):
+            print("v2_distribution_gates.scenario_tag_min_counts must be a mapping")
+            return 1
+        try:
+            quota_issues = quota_failures(valid_rows_for_distribution, gates)
+            min_total = int(gates.get("min_total_rows", 0))
+        except (TypeError, ValueError) as exc:
+            print(f"invalid v2_distribution_gates value: {exc}")
+            return 1
+        if total_rows < min_total:
+            quota_issues.append(
+                {
+                    "tag": "__total__",
+                    "actual": total_rows,
+                    "minimum": min_total,
+                    "message": f"dataset has {total_rows} rows but requires {min_total}",
+                }
+            )
+
+    report = write_validation_report(
+        args.report,
+        total_rows,
+        issues,
+        distribution=distribution,
+        quota_issues=quota_issues,
+    )
     print(
         f"passed={report['passed']} rows={report['rows']} "
         f"valid={report['valid']} invalid={report['invalid']} report={args.report}"
     )
     for issue in issues:
         print(f"{issue['file']}:{issue['line']} {issue['id']}: {issue['message']}")
-    return 1 if args.strict and issues else 0
+    return 1 if args.strict and not report["passed"] else 0
 
 
 def validate_row(row: dict, *, react_validator, master_validator) -> list[str]:
@@ -92,6 +141,9 @@ def validate_row(row: dict, *, react_validator, master_validator) -> list[str]:
     for error in master_errors:
         location = ".".join(str(part) for part in error.path) or "$"
         issues.append(f"master schema error at {location}: {error.message}")
+    bad_tags = invalid_scenario_tags(row)
+    for tag in bad_tags:
+        issues.append(f"invalid scenario tag: {tag}")
     if master_errors:
         return issues
 
@@ -146,14 +198,24 @@ def react_intent(react_ir: dict) -> str:
     return intent if isinstance(intent, str) else ""
 
 
-def write_validation_report(path: Path, rows: int, issues: list[dict]) -> dict:
+def write_validation_report(
+    path: Path,
+    rows: int,
+    issues: list[dict],
+    *,
+    distribution: dict[str, Any] | None = None,
+    quota_issues: list[dict[str, Any]] | None = None,
+) -> dict:
     invalid_rows = {(issue["file"], issue["line"]) for issue in issues}
+    quota_issues = quota_issues or []
     payload = {
         "rows": rows,
         "valid": rows - len(invalid_rows),
         "invalid": len(invalid_rows),
-        "passed": len(invalid_rows) == 0,
+        "passed": len(invalid_rows) == 0 and len(quota_issues) == 0,
         "issues": issues,
+        "distribution": distribution or {},
+        "quota_failures": quota_issues,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(

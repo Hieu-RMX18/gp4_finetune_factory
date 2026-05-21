@@ -54,12 +54,42 @@ def test_react_cloud_notebooks_use_source_bundle_and_cloud_root() -> None:
         assert "gp4_finetune_factory_source_bundle.zip" in source
         assert "zipfile.ZipFile" in source
         assert "os.chdir(WORK_DIR)" in source
-        assert "python -m pip install -q -r requirements.txt" in source
-        assert "unsloth datasets trl" in source
-        assert "--source-plan \"$SOURCE_PLAN\"" in source
-        assert "--seed \"$SEED_PATH\"" in source
+        assert "python -m pip install -q -r requirements-cloud.txt" in source
+        assert "unsloth datasets trl" not in source
+        assert "gp4-react-v2-300k-" in source
+        assert "gp4-react-50k-" not in source
+        assert "2026-05-20-gp4-v2-300k-readiness.md" in source
+        assert "2026-05-16-gp4-react-ir-cloud-workflow.md" not in source
+        assert "--source-plan" in source
+        assert "SOURCE_PLAN" in source
+        assert "--seed" in source
+        assert "SEED_PATH" in source
+        assert "--preset" in source
+        assert "v2-300k" in source
+        assert "benchmark_report_${RUN_ID}.html" in source
         assert "scripts/audit_cloud_completion.py" in source
         assert "$CLOUD_ROOT/data/seed/seed.jsonl" not in source
+
+
+def test_colab_notebook_records_expected_drive_account_and_reuses_old_dataset() -> None:
+    notebook = json.loads(
+        (ROOT / "notebooks/colab_gp4_react_qwen25_qlora.ipynb").read_text(
+            encoding="utf-8"
+        )
+    )
+    source = "\n".join(
+        "".join(cell.get("source", [])) for cell in notebook.get("cells", [])
+    )
+
+    assert "johnwickiller4444@gmail.com" in source
+    assert "GP4_DRIVE_ROOT" in source
+    assert "GP4_PREVIOUS_RUN_ID" in source
+    assert "GP4_OLD_DATASET" in source
+    assert "drive_account_hint.txt" in source
+    assert "drive_account_confirmation.json" in source
+    assert "GP4_DRIVE_ACCOUNT_CONFIRMED" in source
+    assert "--old-dataset" in source
+    assert "subprocess.run(orchestrator_command, check=True)" in source
 
 
 def test_package_phase_report_path_matches_completion_audit(tmp_path: Path) -> None:
@@ -277,3 +307,39 @@ def test_orchestrator_non_dry_run_stops_after_blocked_provider(
     )
     assert [phase["name"] for phase in manifest["phases"]] == ["provider-probe"]
     assert not (cloud_root / "reports" / "contract_provider-blocked.json").exists()
+
+
+def test_orchestrator_blocks_local_old_dataset_path(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/cloud_orchestrator.py",
+            "--run-id",
+            "local-old-dataset",
+            "--cloud-root",
+            str(cloud_root),
+            "--seed",
+            "data/seed/gp4_seed_starter.jsonl",
+            "--phases",
+            "import-old",
+            "--old-dataset",
+            "data/validated/.gitkeep",
+            "--allow-tmp",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "old dataset path is not under approved cloud storage" in (
+        result.stdout + result.stderr
+    )
+    assert not (
+        cloud_root / "reports" / "run_manifest_local-old-dataset.json"
+    ).exists()
