@@ -882,6 +882,99 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     assert "adapter_total_bytes" in html
 
 
+def test_build_quality_report_accepts_adapter_only_reuse_zero_old_rows(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    reports_dir = cloud_root / "reports"
+    reports_dir.mkdir(parents=True)
+    import_old_report = reports_dir / "import-old_run.json"
+    validate_old_report = reports_dir / "validate-old-v2_run.json"
+    merge_report = reports_dir / "merge-accepted_run.json"
+    output_report = reports_dir / "benchmark-report_run.json"
+    import_old_report.write_text(
+        json.dumps(
+            {
+                "passed": True,
+                "old_dataset_count": 0,
+                "old_dataset_fingerprints": [],
+                "adapter_only_reuse": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    validate_old_report.write_text(
+        json.dumps(
+            {
+                "passed": True,
+                "old_rows_valid": 0,
+                "old_validated_paths": [],
+                "adapter_only_reuse": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    merge_report.write_text(
+        json.dumps(
+            {
+                "passed": True,
+                "target_rows": 300000,
+                "output_rows": 300000,
+                "old_rows_input": 0,
+                "old_rows_kept": 0,
+                "new_rows_input": 300000,
+                "new_rows_kept": 300000,
+                "adapter_only_reuse": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/build_quality_report.py",
+            "--input-report",
+            str(import_old_report),
+            "--input-report",
+            str(validate_old_report),
+            "--input-report",
+            str(merge_report),
+            "--report",
+            str(output_report),
+            "--cloud-root",
+            str(cloud_root),
+            "--allow-tmp",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = json.loads(output_report.read_text(encoding="utf-8"))
+    assert {
+        "source": str(validate_old_report),
+        "metric": "old_rows_valid",
+        "actual": 0,
+        "operator": ">=",
+        "threshold": 0,
+        "passed": True,
+    } in report["benchmark_rows"]
+    assert {
+        "source": str(merge_report),
+        "metric": "old_rows_kept",
+        "actual": 0,
+        "operator": ">=",
+        "threshold": 0,
+        "passed": True,
+    } in report["benchmark_rows"]
+
+
 def test_build_quality_report_uses_quality_gate_distribution_once(
     tmp_path: Path,
 ) -> None:

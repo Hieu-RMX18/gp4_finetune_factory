@@ -538,13 +538,29 @@ def _gp4_ws_rows(source: str, report: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _old_dataset_reuse_rows(source: str, report: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    old_row_minimum = 0 if report.get("adapter_only_reuse") is True else 1
     if "old_dataset_count" in report:
-        minimum = 0 if report.get("adapter_only_reuse") is True else 1
-        rows.append(_row(source, "old_dataset_count", _int_value(report.get("old_dataset_count")), ">=", minimum))
+        rows.append(
+            _row(
+                source,
+                "old_dataset_count",
+                _int_value(report.get("old_dataset_count")),
+                ">=",
+                old_row_minimum,
+            )
+        )
     if "adapter_only_reuse" in report:
         rows.append(_row(source, "adapter_only_reuse", report.get("adapter_only_reuse"), "is", True))
     if "old_rows_valid" in report:
-        rows.append(_row(source, "old_rows_valid", _int_value(report.get("old_rows_valid")), ">=", 1))
+        rows.append(
+            _row(
+                source,
+                "old_rows_valid",
+                _int_value(report.get("old_rows_valid")),
+                ">=",
+                old_row_minimum,
+            )
+        )
     if "new_rows_requested" in report:
         target_rows = _int_value(report.get("target_rows"))
         rows.append(
@@ -559,7 +575,15 @@ def _old_dataset_reuse_rows(source: str, report: dict[str, Any]) -> list[dict[st
     if "output_rows" in report:
         rows.append(_row(source, "accepted_300k_rows", _int_value(report.get("output_rows")), ">=", 300000))
     if "old_rows_kept" in report:
-        rows.append(_row(source, "old_rows_kept", _int_value(report.get("old_rows_kept")), ">=", 1))
+        rows.append(
+            _row(
+                source,
+                "old_rows_kept",
+                _int_value(report.get("old_rows_kept")),
+                ">=",
+                old_row_minimum,
+            )
+        )
     if "new_rows_kept" in report:
         rows.append(_row(source, "new_rows_kept", _int_value(report.get("new_rows_kept")), ">=", 1))
     return rows
