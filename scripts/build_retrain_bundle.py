@@ -26,7 +26,6 @@ BUNDLE_PATTERNS = (
     "docs/superpowers/plans/*.md",
     "docs/superpowers/specs/*.md",
     "notebooks/colab_gp4_react_qwen25_qlora.ipynb",
-    "notebooks/kaggle_gp4_react_qwen25_qlora.ipynb",
     "specs/*.yaml",
     "schemas/*.json",
     "scripts/*.py",

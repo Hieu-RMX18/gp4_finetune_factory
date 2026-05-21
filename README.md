@@ -9,7 +9,7 @@ The model is not a robot controller. Training targets must only produce Semantic
 ## Cloud-Only Runtime Policy
 
 Runtime datasets, reports, checkpoints, adapters, inference outputs, and final
-packages must be written to Google Drive or approved cloud storage. The local
+packages must be written to Google Drive only. The local
 repo is for source code, tests, configs, schemas, and notebook templates only.
 Non-dry-run cloud phases require `CLOUD_ROOT`; model caches (`HF_HOME`,
 `TRANSFORMERS_CACHE`, `HF_DATASETS_CACHE`, `TORCH_HOME`, `XDG_CACHE_HOME`,
@@ -57,6 +57,7 @@ python3 scripts/colab_readiness_report.py \
   --run-id "$RUN_ID" \
   --gp4-ws "$GP4_WS" \
   --old-dataset "$GP4_OLD_DATASET" \
+  --previous-adapter "$GP4_PREVIOUS_ADAPTER" \
   --expected-commit "$GP4_WS_EXPECTED_COMMIT" \
   --report "$CLOUD_ROOT/reports/colab_readiness_$RUN_ID.json"
 ```
@@ -102,12 +103,16 @@ After acceptance passes, build readiness metadata only:
 make local-install-manifest CLOUD_ROOT="$CLOUD_ROOT" RUN_ID="$RUN_ID" GP4_WS="$GP4_WS" GP4_WS_EXPECTED_COMMIT="$GP4_WS_EXPECTED_COMMIT"
 ```
 
+Adapter files remain in Google Drive storage; this target records readiness
+metadata and does not perform a local adapter install.
+
 The v2 run writes `benchmark_report_<run_id>.html` and
 `benchmark_report_<run_id>.md` under `CLOUD_ROOT/reports/`. The HTML report
-includes the Benchmark Columns table and visual charts for acceptance gates, v2
-quota failures, and scenario-tag distribution. The Markdown report includes the
-same benchmark columns plus a Maintenance Reference section for comparing later
-upgrade runs. The audit-required report contract is centralized in
+includes the Benchmark Columns table plus Actual vs Threshold, Acceptance Gate Status,
+V2 Quota Failures, and Scenario Tag Distribution charts. The Markdown
+report includes the same benchmark columns plus Provenance and a Maintenance Reference
+section for comparing later upgrade runs. The audit-required report
+contract is centralized in
 `scripts/benchmark_report_contract.py`; keep README/docs/tests aligned with
 that module when adding columns, chart keys, or reference rows.
 

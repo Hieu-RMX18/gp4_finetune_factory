@@ -19,18 +19,16 @@ from package_adapter import adapter_artifact_exists
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC_PATH = ROOT / "configs/dataset_spec.yaml"
-DEFAULT_OUTPUT_DIR = ROOT / "models/qwen25_gp4_lora_pilot"
-DEFAULT_REPORT = ROOT / "reports/training_report.json"
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Train a Qwen2.5-7B GP4 Semantic IR QLoRA adapter with Unsloth."
     )
-    parser.add_argument("--train", type=Path, default=ROOT / "data/splits/train.jsonl")
-    parser.add_argument("--val", type=Path, default=ROOT / "data/splits/val.jsonl")
-    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
-    parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
+    parser.add_argument("--train", type=Path, required=True)
+    parser.add_argument("--val", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--model-name", default="Qwen/Qwen2.5-7B-Instruct")
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--resume-from-adapter", type=Path)

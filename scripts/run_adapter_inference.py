@@ -17,20 +17,16 @@ from typo_noise_policy import typo_expected_json
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_INPUT = ROOT / "data/splits/test.jsonl"
-DEFAULT_ADAPTER = ROOT / "models/qwen25_gp4_lora_pilot"
-DEFAULT_OUTPUT = ROOT / "outputs/model_outputs.jsonl"
-DEFAULT_REPORT = ROOT / "reports/inference_report.json"
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run a trained GP4 Qwen2.5 LoRA adapter on held-out examples."
     )
-    parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
-    parser.add_argument("--adapter-dir", type=Path, default=DEFAULT_ADAPTER)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
+    parser.add_argument("--input", type=Path, required=True)
+    parser.add_argument("--adapter-dir", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--max-seq-length", type=int, default=2048)
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--cloud-root", type=Path)

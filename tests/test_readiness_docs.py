@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +30,8 @@ def test_readme_documents_v2_300k_workflow_and_local_readiness() -> None:
     assert "benchmark_report_<run_id>.html" in text
     assert "benchmark_report_<run_id>.md" in text
     assert "Benchmark Columns" in text
+    assert "Actual vs Threshold" in text
+    assert "Acceptance Gate Status" in text
     assert "Maintenance Reference" in text
     assert "provider_policy_sha256" in text
     assert "contract_manifest_sha256" in text
@@ -36,6 +39,8 @@ def test_readme_documents_v2_300k_workflow_and_local_readiness() -> None:
     assert "drive_account_matches" in text
     assert "old_rows_kept" in text
     assert "adapter_aggregate_sha256" in text
+    assert "Adapter files remain in Google Drive storage" in text
+    assert "Google Drive or approved cloud storage" not in text
     assert "dangerous OS command" in text
     assert "unsupported or hallucinated tool" in text
     assert "python3 -m pip install -r requirements.txt" not in text
@@ -47,6 +52,11 @@ def test_readme_documents_v2_300k_workflow_and_local_readiness() -> None:
     assert "must be set before the notebook clones or reuses `GP4_WS`" in text
     assert "--old-dataset \"$GP4_OLD_DATASET\"" in text
     assert "--previous-adapter \"$GP4_PREVIOUS_ADAPTER\"" in text
+    preflight = text.split("python3 scripts/colab_readiness_report.py", 1)[1].split(
+        "Then run the cloud workflow",
+        1,
+    )[0]
+    assert "--previous-adapter \"$GP4_PREVIOUS_ADAPTER\"" in preflight
     assert "GP4_PREVIOUS_ADAPTER" in text
     assert "python3 scripts/colab_readiness_report.py" in text
     assert (
@@ -61,10 +71,14 @@ def test_local_install_readiness_doc_exists() -> None:
     assert "This document is a readiness checklist, not an install procedure." in text
     assert "completion_audit_<run_id>.json has passed=true" in text
     assert "completion_audit_v2_<run_id>.json" not in text
+    assert "local-install-manifest_<run_id>.json" in text
+    assert "local_install_manifest_<run_id>.json" not in text
     assert "install_action_performed=false" in text
     assert "target_repo_state.exists=true" in text
     assert "target_repo_state.current_branch=ws-deep-rebuild-3526" in text
     assert "target_repo_state.expected_commit_matches=true" in text
+    assert "target_repo_state.allowed_cloud_path=true" in text
+    assert "target_repo_state.is_dirty=false" in text
     assert "benchmark_report_<run_id>.html" in text
     assert "provider_policy_sha256" in text
     assert "contract_manifest_sha256" in text
@@ -72,6 +86,8 @@ def test_local_install_readiness_doc_exists() -> None:
     assert "drive_account_matches" in text
     assert "old_rows_kept" in text
     assert "adapter_aggregate_sha256" in text
+    assert "Adapter files remain in Google Drive storage" in text
+
 
 def test_colab_v2_300k_runbook_pins_drive_reuse_and_reports() -> None:
     text = (ROOT / "docs/colab_v2_300k_runbook.md").read_text(encoding="utf-8")
@@ -88,5 +104,47 @@ def test_colab_v2_300k_runbook_pins_drive_reuse_and_reports() -> None:
     assert "3bbcb0726a4c3305c086c93e2b1e4a320471090b" in text
     assert "benchmark_report_${RUN_ID}.html" in text
     assert "benchmark_report_${RUN_ID}.md" in text
+    assert "Actual vs Threshold" in text
+    assert "Acceptance Gate Status" in text
+    assert "local-install-manifest_${RUN_ID}.json" in text
     assert "completion_audit_${RUN_ID}.json" in text
     assert "Do not run training locally" in text
+    assert "does not perform a local adapter install" in text
+
+
+def test_makefile_local_manifest_defaults_match_v2_cloud_workflow() -> None:
+    text = (ROOT / "Makefile").read_text(encoding="utf-8")
+
+    assert "ADAPTER_DIR ?= $(CLOUD_ROOT)/models/qwen25_gp4_lora\n" in text
+    assert "qwen25_gp4_lora_pilot" not in text
+    assert (
+        "LOCAL_INSTALL_MANIFEST ?= "
+        "$(CLOUD_ROOT)/reports/local-install-manifest_$(RUN_ID).json\n"
+    ) in text
+    assert "local_install_manifest_$(RUN_ID).json" not in text
+
+
+def test_makefile_local_manifest_target_renders_cloud_only_readiness_command() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "local-install-manifest",
+            "CLOUD_ROOT=/tmp/gp4_cloud",
+            "RUN_ID=test-run",
+            "GP4_WS=/tmp/gp4_ws",
+            "GP4_WS_EXPECTED_COMMIT=abc",
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "--adapter-dir \"/tmp/gp4_cloud/models/qwen25_gp4_lora\"" in result.stdout
+    assert (
+        "--output \"/tmp/gp4_cloud/reports/local-install-manifest_test-run.json\""
+        in result.stdout
+    )
+    assert "scripts/build_local_install_manifest.py" in result.stdout
+    assert "pip install" not in result.stdout

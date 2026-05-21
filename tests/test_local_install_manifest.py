@@ -124,6 +124,55 @@ def test_manifest_rejects_target_repo_outside_cloud_root(tmp_path: Path) -> None
     assert manifest["install_action_performed"] is False
 
 
+def test_manifest_blocks_when_target_repo_branch_is_wrong(tmp_path: Path) -> None:
+    cloud_root = tmp_path / "cloud"
+    adapter_dir = cloud_root / "models/qwen25_gp4_lora"
+    report = cloud_root / "reports/acceptance_gate_report_run.json"
+    target_repo = cloud_root / "contract_snapshots/gp4_ws_target"
+    _adapter(adapter_dir)
+    expected_commit = _target_repo(target_repo, branch="main")
+    report.parent.mkdir(parents=True)
+    report.write_text(json.dumps({"passed": True}), encoding="utf-8")
+
+    manifest = build_manifest(
+        adapter_dir=adapter_dir,
+        acceptance_report=report,
+        target_repo=target_repo,
+        policy=CloudStoragePolicy((cloud_root,), allow_tmp=True),
+        expected_commit=expected_commit,
+    )
+
+    assert manifest["ready_for_local_install"] is False
+    assert manifest["blocked_reason"] == "target repo snapshot is not on the expected branch"
+    assert manifest["target_repo_state"]["current_branch"] == "main"
+    assert manifest["install_action_performed"] is False
+
+
+def test_manifest_blocks_when_target_repo_snapshot_is_dirty(tmp_path: Path) -> None:
+    cloud_root = tmp_path / "cloud"
+    adapter_dir = cloud_root / "models/qwen25_gp4_lora"
+    report = cloud_root / "reports/acceptance_gate_report_run.json"
+    target_repo = cloud_root / "contract_snapshots/gp4_ws_target"
+    _adapter(adapter_dir)
+    expected_commit = _target_repo(target_repo)
+    (target_repo / "dirty.txt").write_text("uncommitted\n", encoding="utf-8")
+    report.parent.mkdir(parents=True)
+    report.write_text(json.dumps({"passed": True}), encoding="utf-8")
+
+    manifest = build_manifest(
+        adapter_dir=adapter_dir,
+        acceptance_report=report,
+        target_repo=target_repo,
+        policy=CloudStoragePolicy((cloud_root,), allow_tmp=True),
+        expected_commit=expected_commit,
+    )
+
+    assert manifest["ready_for_local_install"] is False
+    assert manifest["blocked_reason"] == "target repo snapshot is dirty"
+    assert manifest["target_repo_state"]["is_dirty"] is True
+    assert manifest["install_action_performed"] is False
+
+
 def test_manifest_blocks_when_expected_commit_is_missing(tmp_path: Path) -> None:
     cloud_root = tmp_path / "cloud"
     adapter_dir = cloud_root / "models/qwen25_gp4_lora"

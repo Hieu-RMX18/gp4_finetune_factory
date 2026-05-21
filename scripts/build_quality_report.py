@@ -689,6 +689,7 @@ def _chart_payload(
                 "value": 1 if row["passed"] else 0,
             }
             for row in benchmark_rows
+            if _is_acceptance_gate_row(row)
         ],
         CHART_KEY_V2_QUOTA_FAILURES: _quota_failure_chart_rows(benchmark_rows),
         CHART_KEY_SCENARIO_TAG_DISTRIBUTION: [
@@ -726,6 +727,11 @@ def _quota_failure_chart_rows(
             }
         )
     return rows
+
+
+def _is_acceptance_gate_row(row: dict[str, Any]) -> bool:
+    source_name = Path(str(row.get("source") or "")).name
+    return source_name.startswith("acceptance_gate_report")
 
 
 def _is_number(value: Any) -> bool:

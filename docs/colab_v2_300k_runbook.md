@@ -24,7 +24,7 @@ export GP4_PREVIOUS_ADAPTER=/content/drive/MyDrive/gp4_finetune_factory/<previou
 export GP4_WS_EXPECTED_COMMIT=3bbcb0726a4c3305c086c93e2b1e4a320471090b
 ```
 
-The notebook rejects `GP4_OLD_DATASET`, `GP4_PREVIOUS_ADAPTER`, and `GP4_WS` when they are outside the approved Drive/cloud roots.
+The notebook rejects `GP4_OLD_DATASET`, `GP4_PREVIOUS_ADAPTER`, and `GP4_WS` when they are outside the approved Google Drive roots.
 
 ## Expected Evidence
 
@@ -33,9 +33,14 @@ After Run All, keep these files under `$CLOUD_ROOT/reports/`:
 - `colab_readiness_${RUN_ID}.json`
 - `platform_status_${RUN_ID}.json`
 - `acceptance_gate_report_${RUN_ID}.json`
+- `local-install-manifest_${RUN_ID}.json`
 - `benchmark_report_${RUN_ID}.html`
 - `benchmark_report_${RUN_ID}.md`
 - `benchmark-report_${RUN_ID}.json`
 - `completion_audit_${RUN_ID}.json`
 
-The benchmark reports must include Benchmark Columns, V2 Quota Failures, Scenario Tag Distribution, Provenance, and Maintenance Reference sections. The completion audit must pass before any local install readiness claim is accepted.
+The benchmark reports must include Benchmark Columns, Actual vs Threshold,
+Acceptance Gate Status, V2 Quota Failures, Scenario Tag Distribution,
+Provenance, and Maintenance Reference sections. The completion audit must pass
+before any local install readiness claim is accepted.
+This runbook produces cloud readiness evidence only and does not perform a local adapter install.

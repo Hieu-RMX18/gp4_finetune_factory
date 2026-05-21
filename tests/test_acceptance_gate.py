@@ -745,6 +745,11 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
         "label": "intent_accuracy",
         "value": 1,
     }
+    acceptance_chart_labels = {
+        row["label"] for row in report["charts"][CHART_KEY_ACCEPTANCE_GATE_STATUS]
+    }
+    assert "provider_cloud_storage_ready" not in acceptance_chart_labels
+    assert "target_repo_commit" not in acceptance_chart_labels
     assert report["charts"][CHART_KEY_SCENARIO_TAG_DISTRIBUTION] == [
         {"label": "singularity", "value": 12000},
         {"label": "wrist_flip", "value": 8000},
@@ -755,6 +760,7 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     assert "<table" in html
     assert "Benchmark Columns" in html
     assert "<svg" in html
+    assert "Actual vs Threshold" in html
     assert "Acceptance Gate Status" in html
     assert "V2 Quota Failures" in html
     assert "Scenario Tag Distribution" in html

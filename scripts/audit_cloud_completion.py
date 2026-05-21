@@ -7,6 +7,9 @@ from typing import Any
 
 from benchmark_report_contract import (
     BENCHMARK_COLUMNS,
+    CHART_KEY_ACCEPTANCE_GATE_STATUS,
+    CHART_KEY_ACTUAL_VS_THRESHOLD,
+    CHART_KEY_SCENARIO_TAG_DISTRIBUTION,
     REQUIRED_BENCHMARK_ROW_TOKENS,
     REQUIRED_CHART_KEYS,
     REQUIRED_HTML_TOKENS,
@@ -754,12 +757,31 @@ def _colab_readiness_verified(
         (cloud_root, cloud_root.parent),
         allow_tmp=policy.allow_tmp,
     )
+    gp4_ws_policy = CloudStoragePolicy(
+        (cloud_root / "contract_snapshots",),
+        allow_tmp=False,
+    )
     drive_account = report.get("drive_account", {})
     old_dataset = report.get("old_dataset", {})
+    previous_adapter = report.get("previous_adapter", {})
+    previous_run = report.get("previous_run", {})
     gp4_ws = report.get("gp4_ws", {})
-    if not all(isinstance(item, dict) for item in (drive_account, old_dataset, gp4_ws)):
+    if not all(
+        isinstance(item, dict)
+        for item in (
+            drive_account,
+            old_dataset,
+            previous_adapter,
+            previous_run,
+            gp4_ws,
+        )
+    ):
         return False
     old_dataset_path = Path(str(old_dataset.get("path") or ""))
+    previous_adapter_path = Path(str(previous_adapter.get("path") or ""))
+    old_dataset_run_id = str(previous_run.get("old_dataset_run_id") or "")
+    previous_adapter_run_id = str(previous_run.get("previous_adapter_run_id") or "")
+    gp4_ws_path = Path(str(gp4_ws.get("path") or ""))
     return (
         report.get("passed") is True
         and drive_account.get("matches_expected") is True
@@ -770,6 +792,20 @@ def _colab_readiness_verified(
         and old_dataset.get("allowed_cloud_path") is True
         and _int_value(old_dataset.get("rows")) > 0
         and _cloud_file_exists(old_dataset_path, old_dataset_policy)
+        and previous_adapter.get("exists") is True
+        and previous_adapter.get("allowed_cloud_path") is True
+        and previous_adapter.get("artifact_exists") is True
+        and is_allowed_cloud_path(previous_adapter_path, old_dataset_policy)
+        and previous_adapter_path.exists()
+        and adapter_artifact_exists(previous_adapter_path)
+        and previous_run.get("matched") is True
+        and bool(old_dataset_run_id)
+        and old_dataset_run_id == previous_adapter_run_id
+        and old_dataset_run_id != run_id
+        and gp4_ws.get("exists") is True
+        and gp4_ws.get("allowed_cloud_path") is True
+        and is_allowed_cloud_path(gp4_ws_path, gp4_ws_policy)
+        and gp4_ws_path.exists()
         and gp4_ws.get("branch") == gp4_ws.get("expected_branch")
         and gp4_ws.get("expected_branch") == _expected_source_branch(_read_optional_yaml(DATASET_SPEC))
         and bool(gp4_ws.get("head"))
@@ -793,6 +829,12 @@ def _observed_colab_readiness(
     old_dataset = report.get("old_dataset", {})
     if not isinstance(old_dataset, dict):
         old_dataset = {}
+    previous_adapter = report.get("previous_adapter", {})
+    if not isinstance(previous_adapter, dict):
+        previous_adapter = {}
+    previous_run = report.get("previous_run", {})
+    if not isinstance(previous_run, dict):
+        previous_run = {}
     gp4_ws = report.get("gp4_ws", {})
     if not isinstance(gp4_ws, dict):
         gp4_ws = {}
@@ -805,6 +847,11 @@ def _observed_colab_readiness(
         "drive_account_confirmed": drive_account.get("confirmed"),
         "old_dataset_path": old_dataset.get("path"),
         "old_dataset_rows": old_dataset.get("rows"),
+        "previous_adapter_path": previous_adapter.get("path"),
+        "previous_adapter_artifact_exists": previous_adapter.get("artifact_exists"),
+        "previous_run_old_dataset_run_id": previous_run.get("old_dataset_run_id"),
+        "previous_run_adapter_run_id": previous_run.get("previous_adapter_run_id"),
+        "previous_run_matched": previous_run.get("matched"),
         "gp4_ws_path": gp4_ws.get("path"),
         "gp4_ws_branch": gp4_ws.get("branch"),
         "gp4_ws_expected_commit": gp4_ws.get("expected_commit"),
@@ -826,7 +873,21 @@ def _contract_phase_outputs_verified(
     if not is_allowed_cloud_path(contract_path, policy) or not contract_path.exists():
         return False
     contract = _read_optional_json(contract_path)
-    return contract.get("passed") is True and isinstance(contract.get("hashes"), dict)
+    expected_branch = _expected_source_branch(_read_optional_yaml(DATASET_SPEC))
+    expected_commit = str(
+        contract.get("expected_commit")
+        or _local_install_expected_commit(manifest, policy)
+        or ""
+    )
+    return (
+        contract.get("passed") is True
+        and isinstance(contract.get("hashes"), dict)
+        and bool(expected_branch)
+        and contract.get("branch") == expected_branch
+        and bool(contract.get("head"))
+        and _commit_matches(str(contract.get("head") or ""), expected_commit)
+        and contract.get("is_dirty") is False
+    )
 
 def _seed_phase_outputs_verified(
     manifest: dict[str, Any],
@@ -1099,6 +1160,7 @@ def _eval_contract_verified(
         and contract.get("branch") == expected_branch
         and bool(contract.get("head"))
         and _commit_matches(str(contract.get("head") or ""), expected_commit)
+        and contract.get("is_dirty") is False
     )
 
 def _package_acceptance_report_verified(
@@ -1141,6 +1203,14 @@ def _benchmark_report_visualized(
         return False
     if not all(key in charts for key in REQUIRED_CHART_KEYS):
         return False
+    for required_non_empty_chart in (
+        CHART_KEY_ACTUAL_VS_THRESHOLD,
+        CHART_KEY_ACCEPTANCE_GATE_STATUS,
+        CHART_KEY_SCENARIO_TAG_DISTRIBUTION,
+    ):
+        chart_rows = charts.get(required_non_empty_chart)
+        if not isinstance(chart_rows, list) or not chart_rows:
+            return False
     html_report = report.get("html_report")
     if not html_report:
         return False
@@ -1220,6 +1290,7 @@ def _local_install_manifest_ready(
         and bool(target_state.get("head"))
         and bool(target_state.get("expected_commit"))
         and target_state.get("expected_commit_matches") is True
+        and target_state.get("allowed_cloud_path") is True
         and _commit_matches(
             str(target_state.get("head_full") or target_state.get("head") or ""),
             str(target_state.get("expected_commit") or ""),

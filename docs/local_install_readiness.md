@@ -11,17 +11,19 @@ Required evidence:
 
 - acceptance_gate_report_<run_id>.json has passed=true.
 - completion_audit_<run_id>.json has passed=true.
-- local_install_manifest_<run_id>.json has ready_for_local_install=true.
-- local_install_manifest_<run_id>.json has install_action_performed=false.
-- local_install_manifest_<run_id>.json has target_repo_state.exists=true.
-- local_install_manifest_<run_id>.json has
+- local-install-manifest_<run_id>.json has ready_for_local_install=true.
+- local-install-manifest_<run_id>.json has install_action_performed=false.
+- local-install-manifest_<run_id>.json has target_repo_state.exists=true.
+- local-install-manifest_<run_id>.json has target_repo_state.allowed_cloud_path=true.
+- local-install-manifest_<run_id>.json has
   target_repo_state.current_branch=ws-deep-rebuild-3526.
-- local_install_manifest_<run_id>.json has a non-empty
+- local-install-manifest_<run_id>.json has a non-empty
   target_repo_state.expected_commit.
-- local_install_manifest_<run_id>.json has
+- local-install-manifest_<run_id>.json has
   target_repo_state.expected_commit_matches=true.
-- local_install_manifest_<run_id>.json has a non-empty target_repo_state.head.
-- Adapter files remain in approved cloud storage until a separate install task
+- local-install-manifest_<run_id>.json has a non-empty target_repo_state.head.
+- local-install-manifest_<run_id>.json has target_repo_state.is_dirty=false.
+- Adapter files remain in Google Drive storage until a separate install task
   is reviewed and approved.
 - benchmark_report_<run_id>.html and benchmark_report_<run_id>.md exist under
   CLOUD_ROOT/reports.

@@ -96,6 +96,19 @@ def write_cloud_setup_evidence(cloud_root: Path, run_id: str) -> None:
     )
 
 def write_colab_readiness_evidence(cloud_root: Path, run_id: str) -> None:
+    gp4_ws_path = cloud_root / "contract_snapshots/gp4_ws_ws-deep-rebuild-3526"
+    gp4_ws_path.mkdir(parents=True, exist_ok=True)
+    previous_root = cloud_root.parent / "previous_run"
+    old_dataset = previous_root / "data/validated/accepted_300k.jsonl"
+    old_dataset.parent.mkdir(parents=True, exist_ok=True)
+    old_dataset.write_text('{"id":"old-1"}\n', encoding="utf-8")
+    previous_adapter = previous_root / "models/qwen25_gp4_lora"
+    previous_adapter.mkdir(parents=True, exist_ok=True)
+    (previous_adapter / "adapter_config.json").write_text("{}\n", encoding="utf-8")
+    (previous_adapter / "adapter_model.safetensors").write_text(
+        "weights\n",
+        encoding="utf-8",
+    )
     write_json(
         cloud_root / "reports" / f"colab_readiness_{run_id}.json",
         {
@@ -110,10 +123,9 @@ def write_colab_readiness_evidence(cloud_root: Path, run_id: str) -> None:
                 "matches_expected": True,
             },
             "gp4_ws": {
-                "path": str(
-                    cloud_root
-                    / "contract_snapshots/gp4_ws_ws-deep-rebuild-3526"
-                ),
+                "path": str(gp4_ws_path),
+                "exists": True,
+                "allowed_cloud_path": True,
                 "branch": "ws-deep-rebuild-3526",
                 "expected_branch": "ws-deep-rebuild-3526",
                 "head": "abc1234def56",
@@ -122,13 +134,24 @@ def write_colab_readiness_evidence(cloud_root: Path, run_id: str) -> None:
                 "is_dirty": False,
             },
             "old_dataset": {
-                "path": str(
-                    cloud_root
-                    / "previous_run/data/validated/accepted_300k.jsonl"
-                ),
+                "path": str(old_dataset),
                 "exists": True,
                 "rows": 1,
                 "allowed_cloud_path": True,
+            },
+            "previous_adapter": {
+                "path": str(previous_adapter),
+                "exists": True,
+                "allowed_cloud_path": True,
+                "artifact_exists": True,
+            },
+            "previous_run": {
+                "drive_root": str(cloud_root.parent),
+                "old_dataset_run_id": "previous_run",
+                "previous_adapter_run_id": "previous_run",
+                "matched": True,
+                "details": "old_dataset_run_id=previous_run previous_adapter_run_id=previous_run current_run_id="
+                + run_id,
             },
             "install_action_performed": False,
         },
@@ -177,6 +200,7 @@ def write_eval_evidence(cloud_root: Path, run_id: str) -> None:
                 ),
                 "branch": "ws-deep-rebuild-3526",
                 "head": "abc1234def56",
+                "is_dirty": False,
             },
         },
     )
@@ -256,6 +280,9 @@ def write_data_prep_evidence(cloud_root: Path, run_id: str) -> None:
             "passed": True,
             "run_id": run_id,
             "hashes": {"schemas/gp4_react_ir.schema.json": "abc123"},
+            "branch": "ws-deep-rebuild-3526",
+            "head": "abc1234def56",
+            "is_dirty": False,
             "source_contract": "local source snapshot",
         },
     )
@@ -369,6 +396,7 @@ def write_local_install_manifest_evidence(cloud_root: Path, run_id: str) -> None
                 "expected_commit": "abc1234def56",
                 "expected_commit_matches": True,
                 "is_dirty": False,
+                "allowed_cloud_path": True,
             },
             "adapter": {"path": str(cloud_root / "models/qwen25_gp4_lora")},
         },
@@ -738,6 +766,8 @@ def test_cloud_completion_audit_passes_for_complete_cloud_run(
     assert observed["provider"]["paid_risk"] is False
     assert observed["colab_readiness"]["passed"] is True
     assert observed["colab_readiness"]["old_dataset_rows"] == 1
+    assert observed["colab_readiness"]["previous_adapter_artifact_exists"] is True
+    assert observed["colab_readiness"]["previous_run_matched"] is True
     assert observed["colab_readiness"]["gp4_ws_expected_commit_matches"] is True
     assert observed["eval_contract"]["branch"] == "ws-deep-rebuild-3526"
     assert observed["eval_contract"]["head"] == "abc1234def56"
@@ -771,6 +801,210 @@ def test_cloud_completion_audit_passes_for_complete_cloud_run(
         b"weights\n"
     ).hexdigest()
     assert adapter_files["adapter_model.safetensors"]["size_bytes"] == 8
+
+
+def test_cloud_completion_audit_rejects_missing_gp4_ws_snapshot_path(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "missing-gp4-ws-snapshot"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    gp4_ws_path = cloud_root / "contract_snapshots/gp4_ws_ws-deep-rebuild-3526"
+    gp4_ws_path.rmdir()
+
+    payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in payload["checklist"] if not item["passed"]}
+    assert "colab_readiness_verified" in failed
+
+
+def test_cloud_completion_audit_rejects_gp4_ws_snapshot_outside_cloud_root(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "local-gp4-ws-snapshot"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    readiness_report = cloud_root / "reports" / f"colab_readiness_{run_id}.json"
+    payload = json.loads(readiness_report.read_text(encoding="utf-8"))
+    local_gp4_ws = tmp_path / "local_gp4_ws"
+    local_gp4_ws.mkdir()
+    payload["gp4_ws"]["path"] = str(local_gp4_ws)
+    payload["gp4_ws"]["allowed_cloud_path"] = True
+    write_json(readiness_report, payload)
+
+    audit_payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=False,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in audit_payload["checklist"] if not item["passed"]}
+    assert "colab_readiness_verified" in failed
+
+
+def test_cloud_completion_audit_rejects_missing_previous_adapter_evidence(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "missing-previous-adapter"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    readiness_report = cloud_root / "reports" / f"colab_readiness_{run_id}.json"
+    payload = json.loads(readiness_report.read_text(encoding="utf-8"))
+    payload.pop("previous_adapter")
+    write_json(readiness_report, payload)
+
+    audit_payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in audit_payload["checklist"] if not item["passed"]}
+    assert "colab_readiness_verified" in failed
+
+
+def test_cloud_completion_audit_rejects_previous_adapter_without_artifact(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "missing-previous-adapter-artifact"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    readiness_report = cloud_root / "reports" / f"colab_readiness_{run_id}.json"
+    payload = json.loads(readiness_report.read_text(encoding="utf-8"))
+    previous_adapter = Path(payload["previous_adapter"]["path"])
+    (previous_adapter / "adapter_model.safetensors").unlink()
+    payload["previous_adapter"]["artifact_exists"] = True
+    write_json(readiness_report, payload)
+
+    audit_payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in audit_payload["checklist"] if not item["passed"]}
+    assert "colab_readiness_verified" in failed
+
+
+def test_cloud_completion_audit_rejects_mismatched_previous_run_reuse(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "mismatched-previous-run"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    readiness_report = cloud_root / "reports" / f"colab_readiness_{run_id}.json"
+    payload = json.loads(readiness_report.read_text(encoding="utf-8"))
+    other_adapter = cloud_root.parent / "other_previous/models/qwen25_gp4_lora"
+    other_adapter.mkdir(parents=True)
+    (other_adapter / "adapter_config.json").write_text("{}\n", encoding="utf-8")
+    (other_adapter / "adapter_model.safetensors").write_text(
+        "weights\n",
+        encoding="utf-8",
+    )
+    payload["previous_adapter"]["path"] = str(other_adapter)
+    payload["previous_run"]["previous_adapter_run_id"] = "other_previous"
+    payload["previous_run"]["matched"] = False
+    write_json(readiness_report, payload)
+
+    audit_payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in audit_payload["checklist"] if not item["passed"]}
+    assert "colab_readiness_verified" in failed
+
+
+def test_cloud_completion_audit_rejects_previous_adapter_outside_drive(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "local-previous-adapter"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    readiness_report = cloud_root / "reports" / f"colab_readiness_{run_id}.json"
+    payload = json.loads(readiness_report.read_text(encoding="utf-8"))
+    local_adapter = tmp_path.parent / f"{tmp_path.name}_local_previous_adapter"
+    local_adapter.mkdir()
+    (local_adapter / "adapter_config.json").write_text("{}\n", encoding="utf-8")
+    (local_adapter / "adapter_model.safetensors").write_text(
+        "weights\n",
+        encoding="utf-8",
+    )
+    payload["previous_adapter"]["path"] = str(local_adapter)
+    payload["previous_adapter"]["allowed_cloud_path"] = True
+    write_json(readiness_report, payload)
+
+    audit_payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=False,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in audit_payload["checklist"] if not item["passed"]}
+    assert "colab_readiness_verified" in failed
+
+
+def test_cloud_completion_audit_rejects_contract_snapshot_wrong_branch(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "contract-wrong-branch"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    contract_manifest = cloud_root / "manifests/contract_manifest.json"
+    payload = json.loads(contract_manifest.read_text(encoding="utf-8"))
+    payload["branch"] = "main"
+    write_json(contract_manifest, payload)
+
+    audit_payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in audit_payload["checklist"] if not item["passed"]}
+    assert "contract_phase_outputs_verified" in failed
+
+
+def test_cloud_completion_audit_rejects_dirty_contract_snapshot(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "contract-dirty"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    contract_manifest = cloud_root / "manifests/contract_manifest.json"
+    payload = json.loads(contract_manifest.read_text(encoding="utf-8"))
+    payload["is_dirty"] = True
+    write_json(contract_manifest, payload)
+
+    audit_payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in audit_payload["checklist"] if not item["passed"]}
+    assert "contract_phase_outputs_verified" in failed
 
 
 def test_cloud_completion_audit_rejects_missing_colab_readiness_report(
@@ -1058,6 +1292,30 @@ def test_cloud_completion_audit_rejects_eval_contract_commit_mismatch(
     failed = {item["id"] for item in audit_payload["checklist"] if not item["passed"]}
     assert "eval_phase_outputs_verified" in failed
 
+
+def test_cloud_completion_audit_rejects_dirty_eval_contract(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "eval-contract-dirty"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    eval_report = cloud_root / "reports" / f"eval_report_{run_id}.json"
+    payload = json.loads(eval_report.read_text(encoding="utf-8"))
+    payload["contract"]["is_dirty"] = True
+    write_json(eval_report, payload)
+
+    audit_payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in audit_payload["checklist"] if not item["passed"]}
+    assert "eval_phase_outputs_verified" in failed
+
+
 def test_cloud_completion_audit_rejects_local_manifest_that_installed(
     tmp_path: Path,
 ) -> None:
@@ -1258,6 +1516,31 @@ def test_cloud_completion_audit_rejects_benchmark_without_acceptance_status_char
         ),
         encoding="utf-8",
     )
+
+    payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in payload["checklist"] if not item["passed"]}
+    assert "benchmark_report_visualized" in failed
+
+
+def test_cloud_completion_audit_rejects_empty_required_benchmark_charts(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "benchmark-empty-required-charts"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    benchmark_report = cloud_root / "reports" / f"benchmark-report_{run_id}.json"
+    report = json.loads(benchmark_report.read_text(encoding="utf-8"))
+    report["charts"][CHART_KEY_ACTUAL_VS_THRESHOLD] = []
+    report["charts"][CHART_KEY_ACCEPTANCE_GATE_STATUS] = []
+    report["charts"][CHART_KEY_SCENARIO_TAG_DISTRIBUTION] = []
+    write_json(benchmark_report, report)
 
     payload = audit_completion(
         cloud_root=cloud_root,

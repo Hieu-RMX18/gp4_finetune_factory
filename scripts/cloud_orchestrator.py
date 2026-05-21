@@ -21,7 +21,7 @@ from cloud_runtime import (
 from check_acceptance_gates import evaluate_gates
 from check_cloud_storage_policy import CloudStoragePolicy, is_allowed_cloud_path
 from dataset_keys import dataset_identity_key
-from factory_common import read_json, read_jsonl, read_yaml, write_json, write_jsonl
+from factory_common import git_value, read_json, read_jsonl, read_yaml, write_json, write_jsonl
 from locked_v2_eval import write_locked_v2_eval
 from package_adapter import adapter_artifact_exists
 from provider_probe import ProviderProbeResult, write_platform_status
@@ -999,12 +999,25 @@ def _contract_manifest_payload(
     }
     if source_plan_sha:
         hashes["source_plan.md"] = source_plan_sha
-    return {
+    payload = {
         "passed": True,
         "run_id": str(context["run_id"]),
         "hashes": hashes,
         "source_contract": "local source snapshot",
     }
+    raw_gp4_ws = os.environ.get("GP4_WS", "").strip()
+    if raw_gp4_ws:
+        gp4_ws = Path(raw_gp4_ws)
+        payload.update(
+            {
+                "repo_path": str(gp4_ws),
+                "branch": git_value(gp4_ws, "branch", "--show-current"),
+                "head": git_value(gp4_ws, "rev-parse", "HEAD"),
+                "expected_commit": os.environ.get("GP4_WS_EXPECTED_COMMIT", "").strip(),
+                "is_dirty": bool(git_value(gp4_ws, "status", "--short")),
+            }
+        )
+    return payload
 
 
 def _run_dry_phase(phase: str, context: dict[str, Any]) -> dict[str, Any]:

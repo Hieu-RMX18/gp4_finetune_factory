@@ -39,10 +39,9 @@ def test_repository_runtime_artifact_dirs_are_empty() -> None:
     assert runtime_files == []
 
 
-def test_react_cloud_notebooks_use_source_bundle_and_cloud_root() -> None:
+def test_colab_react_cloud_notebook_uses_source_bundle_and_cloud_root() -> None:
     notebook_paths = [
         ROOT / "notebooks/colab_gp4_react_qwen25_qlora.ipynb",
-        ROOT / "notebooks/kaggle_gp4_react_qwen25_qlora.ipynb",
     ]
 
     for notebook_path in notebook_paths:
@@ -69,6 +68,26 @@ def test_react_cloud_notebooks_use_source_bundle_and_cloud_root() -> None:
         assert "benchmark_report_${RUN_ID}.html" in source
         assert "scripts/audit_cloud_completion.py" in source
         assert "$CLOUD_ROOT/data/seed/seed.jsonl" not in source
+
+def test_non_colab_cloud_notebooks_are_disabled() -> None:
+    notebook_paths = [
+        ROOT / "notebooks/kaggle_gp4_react_qwen25_qlora.ipynb",
+        ROOT / "notebooks/colab_qwen25_gp4_unsloth.ipynb",
+        ROOT / "notebooks/kaggle_qwen25_gp4_unsloth.ipynb",
+        ROOT / "notebooks/lightning_qwen25_gp4_unsloth.ipynb",
+    ]
+
+    for notebook_path in notebook_paths:
+        notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+        source = "\n".join(
+            "".join(cell.get("source", [])) for cell in notebook.get("cells", [])
+        )
+
+        assert "Deprecated notebook disabled" in source
+        assert "colab_gp4_react_qwen25_qlora.ipynb" in source
+        assert "Google Drive only" in source
+        assert "scripts/cloud_orchestrator.py" not in source
+        assert "python -m pip install" not in source
 
 
 def test_colab_notebook_records_expected_drive_account_and_reuses_old_dataset() -> None:

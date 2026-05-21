@@ -47,6 +47,12 @@ def _adapter(path: Path) -> None:
     (path / "adapter_model.safetensors").write_text("weights\n", encoding="utf-8")
 
 
+def _previous_adapter(cloud_root: Path) -> Path:
+    previous_adapter = cloud_root.parent / "previous/models/qwen25_gp4_lora"
+    _adapter(previous_adapter)
+    return previous_adapter
+
+
 def _cloud_inputs(tmp_path: Path) -> tuple[Path, Path, Path, str]:
     drive_root = tmp_path / "drive" / "gp4_finetune_factory"
     cloud_root = drive_root / "run"
@@ -80,12 +86,14 @@ def test_colab_readiness_report_passes_for_drive_old_dataset_and_pinned_gp4_ws(
     tmp_path: Path,
 ) -> None:
     cloud_root, old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = _previous_adapter(cloud_root)
 
     report = build_colab_readiness_report(
         cloud_root=cloud_root,
         run_id="run",
         gp4_ws=gp4_ws,
         old_dataset=old_dataset,
+        previous_adapter=previous_adapter,
         expected_commit=expected_commit,
         policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
     )
@@ -99,6 +107,11 @@ def test_colab_readiness_report_passes_for_drive_old_dataset_and_pinned_gp4_ws(
     assert report["gp4_ws"]["branch"] == "ws-deep-rebuild-3526"
     assert report["gp4_ws"]["expected_commit"] == expected_commit
     assert report["gp4_ws"]["expected_commit_matches"] is True
+    assert report["previous_adapter"]["path"] == str(previous_adapter)
+    assert report["previous_adapter"]["artifact_exists"] is True
+    assert report["previous_run"]["old_dataset_run_id"] == "previous"
+    assert report["previous_run"]["previous_adapter_run_id"] == "previous"
+    assert report["previous_run"]["matched"] is True
     assert report["install_action_performed"] is False
     assert all(check["passed"] for check in report["checks"])
 
@@ -107,8 +120,7 @@ def test_colab_readiness_report_passes_for_previous_adapter_under_drive(
     tmp_path: Path,
 ) -> None:
     cloud_root, old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
-    previous_adapter = cloud_root.parent / "previous/models/qwen25_gp4_lora"
-    _adapter(previous_adapter)
+    previous_adapter = _previous_adapter(cloud_root)
 
     report = build_colab_readiness_report(
         cloud_root=cloud_root,
@@ -124,6 +136,82 @@ def test_colab_readiness_report_passes_for_previous_adapter_under_drive(
     assert report["previous_adapter"]["path"] == str(previous_adapter)
     assert report["previous_adapter"]["artifact_exists"] is True
     assert report["previous_adapter"]["allowed_cloud_path"] is True
+    assert report["previous_run"]["matched"] is True
+
+
+def test_colab_readiness_report_rejects_missing_previous_adapter(
+    tmp_path: Path,
+) -> None:
+    cloud_root, old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
+
+    report = build_colab_readiness_report(
+        cloud_root=cloud_root,
+        run_id="run",
+        gp4_ws=gp4_ws,
+        old_dataset=old_dataset,
+        expected_commit=expected_commit,
+        policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
+    )
+
+    assert report["passed"] is False
+    assert report["previous_adapter"]["path"] == ""
+    assert report["previous_run"]["matched"] is False
+    failed = {check["id"] for check in report["checks"] if not check["passed"]}
+    assert "previous_adapter_required" in failed
+    assert "previous_adapter_artifact_exists" in failed
+    assert "previous_reuse_same_prior_run" in failed
+
+
+def test_colab_readiness_report_rejects_mismatched_previous_run_reuse(
+    tmp_path: Path,
+) -> None:
+    cloud_root, old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = cloud_root.parent / "other_previous/models/qwen25_gp4_lora"
+    _adapter(previous_adapter)
+
+    report = build_colab_readiness_report(
+        cloud_root=cloud_root,
+        run_id="run",
+        gp4_ws=gp4_ws,
+        old_dataset=old_dataset,
+        previous_adapter=previous_adapter,
+        expected_commit=expected_commit,
+        policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
+    )
+
+    assert report["passed"] is False
+    assert report["previous_run"]["old_dataset_run_id"] == "previous"
+    assert report["previous_run"]["previous_adapter_run_id"] == "other_previous"
+    failed = {check["id"] for check in report["checks"] if not check["passed"]}
+    assert "previous_reuse_same_prior_run" in failed
+
+
+def test_colab_readiness_report_rejects_current_run_reuse(
+    tmp_path: Path,
+) -> None:
+    cloud_root, _old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
+    old_dataset = cloud_root / "data/validated/accepted_300k.jsonl"
+    old_dataset.parent.mkdir(parents=True)
+    old_dataset.write_text('{"id":"current-run-row"}\n', encoding="utf-8")
+    previous_adapter = cloud_root / "models/qwen25_gp4_lora"
+    _adapter(previous_adapter)
+
+    report = build_colab_readiness_report(
+        cloud_root=cloud_root,
+        run_id="run",
+        gp4_ws=gp4_ws,
+        old_dataset=old_dataset,
+        previous_adapter=previous_adapter,
+        expected_commit=expected_commit,
+        policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
+    )
+
+    assert report["passed"] is False
+    assert report["previous_run"]["old_dataset_run_id"] == "run"
+    assert report["previous_run"]["previous_adapter_run_id"] == "run"
+    assert report["previous_run"]["matched"] is False
+    failed = {check["id"] for check in report["checks"] if not check["passed"]}
+    assert "previous_reuse_same_prior_run" in failed
 
 
 def test_colab_readiness_report_rejects_previous_adapter_outside_cloud_root(
@@ -152,6 +240,7 @@ def test_colab_readiness_report_fails_without_drive_account_confirmation(
     tmp_path: Path,
 ) -> None:
     cloud_root, old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = _previous_adapter(cloud_root)
     (cloud_root / "manifests/drive_account_confirmation.json").unlink()
 
     report = build_colab_readiness_report(
@@ -159,6 +248,7 @@ def test_colab_readiness_report_fails_without_drive_account_confirmation(
         run_id="run",
         gp4_ws=gp4_ws,
         old_dataset=old_dataset,
+        previous_adapter=previous_adapter,
         expected_commit=expected_commit,
         policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
     )
@@ -172,6 +262,7 @@ def test_colab_readiness_report_fails_when_old_dataset_missing(
     tmp_path: Path,
 ) -> None:
     cloud_root, old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = _previous_adapter(cloud_root)
     old_dataset.unlink()
 
     report = build_colab_readiness_report(
@@ -179,6 +270,7 @@ def test_colab_readiness_report_fails_when_old_dataset_missing(
         run_id="run",
         gp4_ws=gp4_ws,
         old_dataset=old_dataset,
+        previous_adapter=previous_adapter,
         expected_commit=expected_commit,
         policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
     )
@@ -193,12 +285,14 @@ def test_colab_readiness_report_fails_when_gp4_ws_commit_mismatches(
     tmp_path: Path,
 ) -> None:
     cloud_root, old_dataset, gp4_ws, _expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = _previous_adapter(cloud_root)
 
     report = build_colab_readiness_report(
         cloud_root=cloud_root,
         run_id="run",
         gp4_ws=gp4_ws,
         old_dataset=old_dataset,
+        previous_adapter=previous_adapter,
         expected_commit="deadbeef",
         policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
     )
@@ -212,6 +306,7 @@ def test_colab_readiness_report_rejects_gp4_ws_outside_cloud_root(
     tmp_path: Path,
 ) -> None:
     cloud_root, old_dataset, _gp4_ws, _expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = _previous_adapter(cloud_root)
     outside_gp4_ws = tmp_path / "local_gp4_ws"
     expected_commit = _target_repo(outside_gp4_ws)
 
@@ -220,6 +315,7 @@ def test_colab_readiness_report_rejects_gp4_ws_outside_cloud_root(
         run_id="run",
         gp4_ws=outside_gp4_ws,
         old_dataset=old_dataset,
+        previous_adapter=previous_adapter,
         expected_commit=expected_commit,
         policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=False),
     )
@@ -229,16 +325,89 @@ def test_colab_readiness_report_rejects_gp4_ws_outside_cloud_root(
     assert "gp4_ws_allowed_cloud_path" in failed
 
 
-def test_colab_readiness_report_fails_when_expected_commit_is_too_short(
+def test_colab_readiness_report_rejects_gp4_ws_from_sibling_run(
+    tmp_path: Path,
+) -> None:
+    cloud_root, old_dataset, _gp4_ws, _expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = _previous_adapter(cloud_root)
+    sibling_gp4_ws = (
+        cloud_root.parent
+        / "sibling_run/contract_snapshots/gp4_ws_ws-deep-rebuild-3526"
+    )
+    expected_commit = _target_repo(sibling_gp4_ws)
+
+    report = build_colab_readiness_report(
+        cloud_root=cloud_root,
+        run_id="run",
+        gp4_ws=sibling_gp4_ws,
+        old_dataset=old_dataset,
+        previous_adapter=previous_adapter,
+        expected_commit=expected_commit,
+        policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
+    )
+
+    assert report["passed"] is False
+    failed = {check["id"] for check in report["checks"] if not check["passed"]}
+    assert "gp4_ws_allowed_cloud_path" in failed
+
+
+def test_colab_readiness_report_fails_when_gp4_ws_branch_is_wrong(
+    tmp_path: Path,
+) -> None:
+    cloud_root, old_dataset, _gp4_ws, _expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = _previous_adapter(cloud_root)
+    wrong_branch_gp4_ws = cloud_root / "contract_snapshots/wrong_branch_gp4_ws"
+    expected_commit = _target_repo(wrong_branch_gp4_ws, branch="main")
+
+    report = build_colab_readiness_report(
+        cloud_root=cloud_root,
+        run_id="run",
+        gp4_ws=wrong_branch_gp4_ws,
+        old_dataset=old_dataset,
+        previous_adapter=previous_adapter,
+        expected_commit=expected_commit,
+        policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
+    )
+
+    assert report["passed"] is False
+    failed = {check["id"] for check in report["checks"] if not check["passed"]}
+    assert "gp4_ws_expected_branch" in failed
+
+
+def test_colab_readiness_report_fails_when_gp4_ws_snapshot_is_dirty(
     tmp_path: Path,
 ) -> None:
     cloud_root, old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = _previous_adapter(cloud_root)
+    (gp4_ws / "dirty.txt").write_text("uncommitted\n", encoding="utf-8")
 
     report = build_colab_readiness_report(
         cloud_root=cloud_root,
         run_id="run",
         gp4_ws=gp4_ws,
         old_dataset=old_dataset,
+        previous_adapter=previous_adapter,
+        expected_commit=expected_commit,
+        policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
+    )
+
+    assert report["passed"] is False
+    failed = {check["id"] for check in report["checks"] if not check["passed"]}
+    assert "gp4_ws_clean" in failed
+
+
+def test_colab_readiness_report_fails_when_expected_commit_is_too_short(
+    tmp_path: Path,
+) -> None:
+    cloud_root, old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = _previous_adapter(cloud_root)
+
+    report = build_colab_readiness_report(
+        cloud_root=cloud_root,
+        run_id="run",
+        gp4_ws=gp4_ws,
+        old_dataset=old_dataset,
+        previous_adapter=previous_adapter,
         expected_commit=expected_commit[:7],
         policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
     )
@@ -249,6 +418,43 @@ def test_colab_readiness_report_fails_when_expected_commit_is_too_short(
 
 
 def test_colab_readiness_cli_writes_report_under_cloud_root(tmp_path: Path) -> None:
+    cloud_root, old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = _previous_adapter(cloud_root)
+    report_path = cloud_root / "reports/colab_readiness_run.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/colab_readiness_report.py",
+            "--cloud-root",
+            str(cloud_root),
+            "--run-id",
+            "run",
+            "--gp4-ws",
+            str(gp4_ws),
+            "--old-dataset",
+            str(old_dataset),
+            "--previous-adapter",
+            str(previous_adapter),
+            "--expected-commit",
+            expected_commit,
+            "--report",
+            str(report_path),
+            "--allow-tmp",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    assert payload["report"] == str(report_path)
+
+
+def test_colab_readiness_cli_requires_previous_adapter(tmp_path: Path) -> None:
     cloud_root, old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
     report_path = cloud_root / "reports/colab_readiness_run.json"
 
@@ -276,7 +482,6 @@ def test_colab_readiness_cli_writes_report_under_cloud_root(tmp_path: Path) -> N
         check=False,
     )
 
-    assert result.returncode == 0, result.stdout + result.stderr
-    payload = json.loads(report_path.read_text(encoding="utf-8"))
-    assert payload["passed"] is True
-    assert payload["report"] == str(report_path)
+    assert result.returncode != 0
+    assert "--previous-adapter" in result.stderr
+    assert not report_path.exists()

@@ -11,9 +11,9 @@ PILOT_VALIDATED ?= $(CLOUD_ROOT)/data/validated/pilot_100_validated.jsonl
 SPLIT_DIR ?= $(CLOUD_ROOT)/data/splits
 OUTPUT_DIR ?= $(CLOUD_ROOT)/outputs
 HELDOUT_MIN ?= 11
-ADAPTER_DIR ?= $(CLOUD_ROOT)/models/qwen25_gp4_lora_pilot
+ADAPTER_DIR ?= $(CLOUD_ROOT)/models/qwen25_gp4_lora
 BUNDLE ?= $(CLOUD_ROOT)/bundles/gp4_finetune_factory_source_bundle.zip
-LOCAL_INSTALL_MANIFEST ?= $(CLOUD_ROOT)/reports/local_install_manifest_$(RUN_ID).json
+LOCAL_INSTALL_MANIFEST ?= $(CLOUD_ROOT)/reports/local-install-manifest_$(RUN_ID).json
 LOCAL_TARGET_REPO ?= $(GP4_WS)
 
 .PHONY: require-cloud-root require-gp4-ws require-run-id contract test validate-seed validate-generated validate-pilot dedupe-seed dedupe-pilot splits export-unsloth review review-pilot train-dry-run train infer-dry-run infer eval gates audit-cloud-run local-install-manifest open-colab-brave cloud-dry-run cloud-v2-dry-run retrain-bundle pilot-data

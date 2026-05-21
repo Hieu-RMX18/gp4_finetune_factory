@@ -1123,6 +1123,28 @@ def test_train_unsloth_dry_run_reports_dataset_rows(tmp_path: Path) -> None:
     assert report["training"]["load_in_4bit"] is True
 
 
+def test_train_unsloth_requires_explicit_runtime_paths() -> None:
+    result = _run("scripts/train_unsloth_qlora.py", "--dry-run")
+
+    assert result.returncode != 0
+    assert "the following arguments are required" in result.stderr
+    assert "--train" in result.stderr
+    assert "--val" in result.stderr
+    assert "--output-dir" in result.stderr
+    assert "--report" in result.stderr
+
+
+def test_run_adapter_inference_requires_explicit_runtime_paths() -> None:
+    result = _run("scripts/run_adapter_inference.py", "--dry-run")
+
+    assert result.returncode != 0
+    assert "the following arguments are required" in result.stderr
+    assert "--input" in result.stderr
+    assert "--adapter-dir" in result.stderr
+    assert "--output" in result.stderr
+    assert "--report" in result.stderr
+
+
 def test_train_unsloth_dry_run_reports_previous_adapter_reuse(tmp_path: Path) -> None:
     cloud_root = tmp_path / "cloud"
     train_path = cloud_root / "data/splits/train.jsonl"
@@ -1571,7 +1593,7 @@ def test_build_retrain_bundle_writes_reproducible_cloud_source_zip(
         assert names == sorted(names)
         assert "data/seed/gp4_seed_starter.jsonl" in names
         assert "notebooks/colab_gp4_react_qwen25_qlora.ipynb" in names
-        assert "notebooks/kaggle_gp4_react_qwen25_qlora.ipynb" in names
+        assert "notebooks/kaggle_gp4_react_qwen25_qlora.ipynb" not in names
         assert "notebooks/colab_qwen25_gp4_unsloth.ipynb" not in names
         assert "notebooks/kaggle_qwen25_gp4_unsloth.ipynb" not in names
         assert "notebooks/lightning_qwen25_gp4_unsloth.ipynb" not in names
