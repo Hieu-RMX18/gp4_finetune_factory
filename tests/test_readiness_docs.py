@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-HARDENED_COLAB_READINESS_COMMIT = "201d1a43bb01a3c1ee6dd97c5dfb2c68e16c51bd"
+HARDENED_COLAB_READINESS_COMMIT = "fb5f2a6dbf23a9db325ae507eb74cc426822679c"
 
 
 def test_model_card_states_no_production_adapter_until_acceptance_gate_passes() -> None:
