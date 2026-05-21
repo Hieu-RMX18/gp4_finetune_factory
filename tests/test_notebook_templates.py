@@ -14,7 +14,8 @@ def test_colab_notebook_can_clone_pushed_branch_without_source_bundle() -> None:
 
     assert "SOURCE_BRANCH = os.environ.get('GP4_SOURCE_BRANCH'" in setup_source
     assert "FACTORY_SOURCE_EXPECTED_COMMIT = os.environ.get('GP4_FACTORY_SOURCE_EXPECTED_COMMIT'" in setup_source
-    assert "GP4_FACTORY_SOURCE_EXPECTED_COMMIT is required" in setup_source
+    assert "git', 'ls-remote', 'https://github.com/Hieu-RMX18/gp4_finetune_factory.git'" in setup_source
+    assert "FACTORY_SOURCE_EXPECTED_COMMIT could not be resolved" in setup_source
     assert "len(FACTORY_SOURCE_EXPECTED_COMMIT) < 12" in setup_source
     assert "!git clone --branch {SOURCE_BRANCH}" not in setup_source
     assert "subprocess.run(['git', 'clone', '--branch', SOURCE_BRANCH" in setup_source
@@ -29,6 +30,7 @@ def test_colab_notebook_can_clone_pushed_branch_without_source_bundle() -> None:
     assert "GP4_WS_REPO_URL = os.environ.get('GP4_WS_REPO_URL'" in setup_source
     assert "GP4_WS_BRANCH = os.environ.get('GP4_WS_BRANCH', 'ws-deep-rebuild-3526')" in setup_source
     assert "GP4_WS_EXPECTED_COMMIT" in setup_source
+    assert "GP4_WS_EXPECTED_COMMIT', '3bbcb0726a4c3305c086c93e2b1e4a320471090b'" in setup_source
     assert "if not GP4_WS_EXPECTED_COMMIT:" in setup_source
     assert "GP4_WS_EXPECTED_COMMIT is required" in setup_source
     assert "len(GP4_WS_EXPECTED_COMMIT) < 12" in setup_source
@@ -80,12 +82,13 @@ def test_colab_notebook_locks_drive_account_and_reuses_previous_accepted_dataset
     assert "drive_account_hint.txt" in setup_source
     assert "drive_account_confirmation.json" in setup_source
     assert "GP4_DRIVE_ACCOUNT_CONFIRMED" in setup_source
-    assert "operator_input_after_drive_mount" in setup_source
+    assert "operator_or_explicit_requested_account_after_drive_mount" in setup_source
     assert "GP4_PREVIOUS_RUN_ID" in setup_source
     assert "GP4_PREVIOUS_ADAPTER" in setup_source
     assert "GP4_OLD_DATASET" in setup_source
     assert "data/validated/accepted_300k.jsonl" in setup_source
     assert "models/qwen25_gp4_lora" in setup_source
+    assert "previous_candidates.append((accepted_path.stat().st_mtime, previous_dir.name))" in setup_source
     assert "GP4_OLD_DATASET or GP4_PREVIOUS_RUN_ID" in setup_source
     assert "GP4_PREVIOUS_ADAPTER or GP4_PREVIOUS_RUN_ID" in setup_source
     assert "GP4_OLD_DATASET must live under the configured Google Drive root" in setup_source
