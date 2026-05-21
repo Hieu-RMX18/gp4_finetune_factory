@@ -815,6 +815,7 @@ def _colab_readiness_verified(
         old_dataset.get("adapter_only_reuse") is True
         and previous_run.get("adapter_only_reuse") is True
     )
+    previous_artifacts_matched = previous_run.get("matched") is True
     gp4_ws_path = Path(str(gp4_ws.get("path") or ""))
     old_dataset_verified = (
         (
@@ -823,7 +824,10 @@ def _colab_readiness_verified(
             and _int_value(old_dataset.get("rows")) > 0
             and _cloud_file_exists(old_dataset_path, old_dataset_policy)
             and bool(old_dataset_run_id)
-            and old_dataset_run_id == previous_adapter_run_id
+            and bool(previous_adapter_run_id)
+            and old_dataset_run_id != run_id
+            and previous_adapter_run_id != run_id
+            and previous_artifacts_matched
         )
         or (
             adapter_only_reuse
@@ -845,7 +849,7 @@ def _colab_readiness_verified(
         and is_allowed_cloud_path(previous_adapter_path, old_dataset_policy)
         and previous_adapter_path.exists()
         and adapter_artifact_exists(previous_adapter_path)
-        and previous_run.get("matched") is True
+        and previous_artifacts_matched
         and previous_adapter_run_id != run_id
         and gp4_ws.get("exists") is True
         and gp4_ws.get("allowed_cloud_path") is True

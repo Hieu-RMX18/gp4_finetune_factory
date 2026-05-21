@@ -95,6 +95,10 @@ If Drive has a previous adapter but no usable previous accepted dataset, the
 notebook uses adapter-only reuse and passes `--allow-adapter-only-reuse` to the
 readiness report; the orchestrator then requests 300k new rows and keeps
 `old_rows_kept=0`.
+If the newest accepted 300k dataset and the reusable adapter come from two
+different completed prior Drive runs, the notebook passes
+`--allow-mixed-prior-artifacts`; readiness still rejects any dataset or adapter
+from the current run.
 
 The Colab notebook also prepares a read-only `gp4_ws` contract snapshot at
 `$CLOUD_ROOT/contract_snapshots/gp4_ws_ws-deep-rebuild-3526`; any pre-set

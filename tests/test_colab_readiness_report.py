@@ -239,6 +239,32 @@ def test_colab_readiness_report_rejects_mismatched_previous_run_reuse(
     assert "previous_reuse_same_prior_run" in failed
 
 
+def test_colab_readiness_report_allows_explicit_mixed_prior_artifacts(
+    tmp_path: Path,
+) -> None:
+    cloud_root, old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = cloud_root.parent / "adapter_run/models/qwen25_gp4_lora"
+    _adapter(previous_adapter)
+
+    report = build_colab_readiness_report(
+        cloud_root=cloud_root,
+        run_id="run",
+        gp4_ws=gp4_ws,
+        old_dataset=old_dataset,
+        previous_adapter=previous_adapter,
+        expected_commit=expected_commit,
+        allow_mixed_prior_artifacts=True,
+        policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
+    )
+
+    assert report["passed"] is True
+    assert report["previous_run"]["old_dataset_run_id"] == "previous"
+    assert report["previous_run"]["previous_adapter_run_id"] == "adapter_run"
+    assert report["previous_run"]["same_source_run"] is False
+    assert report["previous_run"]["mixed_prior_artifacts"] is True
+    assert report["previous_run"]["matched"] is True
+
+
 def test_colab_readiness_report_rejects_current_run_reuse(
     tmp_path: Path,
 ) -> None:
@@ -262,6 +288,36 @@ def test_colab_readiness_report_rejects_current_run_reuse(
     assert report["passed"] is False
     assert report["previous_run"]["old_dataset_run_id"] == "run"
     assert report["previous_run"]["previous_adapter_run_id"] == "run"
+    assert report["previous_run"]["matched"] is False
+    failed = {check["id"] for check in report["checks"] if not check["passed"]}
+    assert "previous_reuse_same_prior_run" in failed
+
+
+def test_colab_readiness_report_rejects_current_run_dataset_with_mixed_reuse(
+    tmp_path: Path,
+) -> None:
+    cloud_root, _old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
+    old_dataset = cloud_root / "data/validated/accepted_300k.jsonl"
+    old_dataset.parent.mkdir(parents=True)
+    old_dataset.write_text('{"id":"current-run-row"}\n', encoding="utf-8")
+    previous_adapter = cloud_root.parent / "adapter_run/models/qwen25_gp4_lora"
+    _adapter(previous_adapter)
+
+    report = build_colab_readiness_report(
+        cloud_root=cloud_root,
+        run_id="run",
+        gp4_ws=gp4_ws,
+        old_dataset=old_dataset,
+        previous_adapter=previous_adapter,
+        expected_commit=expected_commit,
+        allow_mixed_prior_artifacts=True,
+        policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
+    )
+
+    assert report["passed"] is False
+    assert report["previous_run"]["old_dataset_run_id"] == "run"
+    assert report["previous_run"]["previous_adapter_run_id"] == "adapter_run"
+    assert report["previous_run"]["mixed_prior_artifacts"] is True
     assert report["previous_run"]["matched"] is False
     failed = {check["id"] for check in report["checks"] if not check["passed"]}
     assert "previous_reuse_same_prior_run" in failed
@@ -505,6 +561,48 @@ def test_colab_readiness_cli_writes_report_under_cloud_root(tmp_path: Path) -> N
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert payload["passed"] is True
     assert payload["report"] == str(report_path)
+
+
+def test_colab_readiness_cli_allows_explicit_mixed_prior_artifacts(
+    tmp_path: Path,
+) -> None:
+    cloud_root, old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = cloud_root.parent / "adapter_run/models/qwen25_gp4_lora"
+    _adapter(previous_adapter)
+    report_path = cloud_root / "reports/colab_readiness_run.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/colab_readiness_report.py",
+            "--cloud-root",
+            str(cloud_root),
+            "--run-id",
+            "run",
+            "--gp4-ws",
+            str(gp4_ws),
+            "--old-dataset",
+            str(old_dataset),
+            "--previous-adapter",
+            str(previous_adapter),
+            "--expected-commit",
+            expected_commit,
+            "--report",
+            str(report_path),
+            "--allow-mixed-prior-artifacts",
+            "--allow-tmp",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["passed"] is True
+    assert payload["previous_run"]["matched"] is True
+    assert payload["previous_run"]["mixed_prior_artifacts"] is True
 
 
 def test_colab_readiness_cli_requires_previous_adapter(tmp_path: Path) -> None:

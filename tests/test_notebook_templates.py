@@ -110,6 +110,7 @@ def test_colab_notebook_locks_drive_account_and_reuses_previous_accepted_dataset
     )
     assert "--old-dataset" in orchestrator_source
     assert "--allow-adapter-only-reuse" in orchestrator_source
+    assert "--allow-mixed-prior-artifacts" in orchestrator_source
     assert "--previous-adapter" in orchestrator_source
 
 

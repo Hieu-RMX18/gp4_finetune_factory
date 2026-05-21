@@ -34,6 +34,7 @@ def main() -> int:
     parser.add_argument("--expected-commit")
     parser.add_argument("--report", type=Path)
     parser.add_argument("--allow-adapter-only-reuse", action="store_true")
+    parser.add_argument("--allow-mixed-prior-artifacts", action="store_true")
     parser.add_argument("--allow-tmp", action="store_true")
     args = parser.parse_args()
 
@@ -62,6 +63,7 @@ def main() -> int:
         previous_adapter=args.previous_adapter,
         expected_commit=args.expected_commit,
         allow_adapter_only_reuse=args.allow_adapter_only_reuse,
+        allow_mixed_prior_artifacts=args.allow_mixed_prior_artifacts,
         policy=policy,
         report=report_path,
     )
@@ -79,6 +81,7 @@ def build_colab_readiness_report(
     previous_adapter: Path | None = None,
     expected_commit: str | None = None,
     allow_adapter_only_reuse: bool = False,
+    allow_mixed_prior_artifacts: bool = False,
     policy: CloudStoragePolicy,
     report: Path | None = None,
 ) -> dict[str, Any]:
@@ -129,6 +132,7 @@ def build_colab_readiness_report(
         old_dataset=old_dataset,
         previous_adapter=previous_adapter,
         allow_adapter_only_reuse=allow_adapter_only_reuse,
+        allow_mixed_prior_artifacts=allow_mixed_prior_artifacts,
     )
     gp4_ws_exists = gp4_ws.exists()
     gp4_ws_allowed = is_allowed_cloud_path(gp4_ws, gp4_ws_policy)
@@ -274,6 +278,7 @@ def _previous_run_reuse_state(
     old_dataset: Path | None,
     previous_adapter: Path | None,
     allow_adapter_only_reuse: bool,
+    allow_mixed_prior_artifacts: bool,
 ) -> dict[str, Any]:
     drive_root = cloud_root.parent
     old_dataset_run_id = _previous_run_id_from_path(
@@ -301,9 +306,20 @@ def _previous_run_reuse_state(
             or adapter_only_reuse
         )
     )
+    mixed_prior_artifacts = (
+        bool(old_dataset_run_id)
+        and bool(previous_adapter_run_id)
+        and old_dataset_run_id != previous_adapter_run_id
+    )
+    mixed_prior_artifacts_accepted = (
+        allow_mixed_prior_artifacts
+        and mixed_prior_artifacts
+        and old_dataset_run_id != run_id
+        and previous_adapter_run_id != run_id
+    )
     source_run_id = previous_adapter_run_id if adapter_only_reuse else old_dataset_run_id
     is_prior_run = same_source_run and source_run_id != run_id
-    matched = same_source_run and is_prior_run
+    matched = (same_source_run and is_prior_run) or mixed_prior_artifacts_accepted
     details = (
         f"old_dataset_run_id={old_dataset_run_id or '<unknown>'} "
         f"previous_adapter_run_id={previous_adapter_run_id or '<none>'} "
@@ -315,6 +331,8 @@ def _previous_run_reuse_state(
         "previous_adapter_run_id": previous_adapter_run_id,
         "adapter_only_reuse": adapter_only_reuse,
         "same_source_run": same_source_run,
+        "mixed_prior_artifacts": mixed_prior_artifacts,
+        "mixed_prior_artifacts_allowed": allow_mixed_prior_artifacts,
         "is_prior_run": is_prior_run,
         "matched": matched,
         "details": details,

@@ -23,6 +23,9 @@ notebook. The normal reuse path uses both
 `GP4_PREVIOUS_ADAPTER=<previous_run>/models/qwen25_gp4_lora`. If no old dataset
 is available, adapter-only reuse is allowed when `GP4_PREVIOUS_ADAPTER` points
 at a prior Drive adapter; that mode generates the full 300k accepted-row target from new rows and keeps `old_rows_kept=0`.
+When Drive already has a prior 300k accepted dataset but the reusable adapter is
+from a different prior run, the notebook uses explicit mixed-prior-artifacts
+readiness. Current-run datasets or adapters are still rejected.
 
 If all three reuse inputs are unset, the Colab notebook scans the Drive root
 for the newest prior accepted dataset and the newest prior adapter. It can

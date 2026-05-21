@@ -1103,6 +1103,41 @@ def test_cloud_completion_audit_rejects_mismatched_previous_run_reuse(
     assert "colab_readiness_verified" in failed
 
 
+def test_cloud_completion_audit_accepts_explicit_mixed_prior_artifacts(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "mixed-prior-artifacts"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    readiness_report = cloud_root / "reports" / f"colab_readiness_{run_id}.json"
+    payload = json.loads(readiness_report.read_text(encoding="utf-8"))
+    other_adapter = cloud_root.parent / "adapter_run/models/qwen25_gp4_lora"
+    other_adapter.mkdir(parents=True)
+    (other_adapter / "adapter_config.json").write_text("{}\n", encoding="utf-8")
+    (other_adapter / "adapter_model.safetensors").write_text(
+        "weights\n",
+        encoding="utf-8",
+    )
+    payload["previous_adapter"]["path"] = str(other_adapter)
+    payload["previous_run"]["previous_adapter_run_id"] = "adapter_run"
+    payload["previous_run"]["same_source_run"] = False
+    payload["previous_run"]["mixed_prior_artifacts"] = True
+    payload["previous_run"]["mixed_prior_artifacts_allowed"] = True
+    payload["previous_run"]["matched"] = True
+    write_json(readiness_report, payload)
+
+    audit_payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in audit_payload["checklist"] if not item["passed"]}
+    assert "colab_readiness_verified" not in failed
+
+
 def test_cloud_completion_audit_rejects_previous_adapter_outside_drive(
     tmp_path: Path,
 ) -> None:
