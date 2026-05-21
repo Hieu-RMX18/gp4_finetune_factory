@@ -330,7 +330,13 @@ def audit_completion(
         ),
         _check(
             "train_phase_outputs_verified",
-            _train_phase_outputs_verified(manifest, policy, adapter_dir),
+            _train_phase_outputs_verified(
+                manifest,
+                policy,
+                adapter_dir,
+                cloud_root,
+                run_id,
+            ),
             "train phase report must pass and reference cloud train, val, and "
             "adapter output paths",
             str(manifest_path),
@@ -969,7 +975,11 @@ def _old_dataset_reuse_verified(
         if not isinstance(fingerprint, dict):
             return False
         path = Path(str(fingerprint.get("path") or ""))
-        if not _cloud_file_exists(path, policy):
+        reuse_policy = CloudStoragePolicy(
+            (cloud_root, cloud_root.parent),
+            allow_tmp=policy.allow_tmp,
+        )
+        if not _cloud_file_exists(path, reuse_policy):
             return False
         if str(fingerprint.get("sha256") or "") != sha256_file(path):
             return False
@@ -1022,6 +1032,8 @@ def _train_phase_outputs_verified(
     manifest: dict[str, Any],
     policy: CloudStoragePolicy,
     expected_adapter_dir: Path,
+    cloud_root: Path,
+    run_id: str,
 ) -> bool:
     report = _phase_report(manifest, "train", policy)
     if report is None or report.get("passed") is not True:
@@ -1037,10 +1049,50 @@ def _train_phase_outputs_verified(
     output_dir = Path(str(report["output_dir"]))
     if not _same_path(output_dir, expected_adapter_dir):
         return False
+    expected_resume = _colab_previous_adapter_path(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        policy=policy,
+    )
+    resume_path = Path(str(report.get("resume_from_adapter") or ""))
+    reuse_policy = CloudStoragePolicy(
+        (cloud_root, cloud_root.parent),
+        allow_tmp=policy.allow_tmp,
+    )
+    if expected_resume is None or not _same_path(resume_path, expected_resume):
+        return False
+    if report.get("resume_from_adapter_allowed_cloud_path") is not True:
+        return False
+    if report.get("resume_from_adapter_artifact_exists") is not True:
+        return False
+    if not is_allowed_cloud_path(resume_path, reuse_policy):
+        return False
+    if not adapter_artifact_exists(resume_path):
+        return False
     return (
         _int_value(report.get("train_rows")) > 0
         and _int_value(report.get("val_rows")) > 0
     )
+
+
+def _colab_previous_adapter_path(
+    *,
+    cloud_root: Path,
+    run_id: str,
+    policy: CloudStoragePolicy,
+) -> Path | None:
+    report_path = cloud_root / "reports" / f"colab_readiness_{run_id}.json"
+    if not _cloud_file_exists(report_path, policy):
+        return None
+    report = _read_optional_json(report_path)
+    previous_adapter = report.get("previous_adapter", {})
+    if not isinstance(previous_adapter, dict):
+        return None
+    if previous_adapter.get("artifact_exists") is not True:
+        return None
+    raw_path = str(previous_adapter.get("path") or "")
+    return Path(raw_path) if raw_path else None
+
 
 def _infer_phase_outputs_verified(
     manifest: dict[str, Any],

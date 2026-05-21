@@ -373,9 +373,11 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     plan_v2_report = cloud_root / "reports/plan-v2-target_run.json"
     merge_report = cloud_root / "reports/merge-accepted_run.json"
     adapter_dir = cloud_root / "models/qwen25_gp4_lora"
+    previous_adapter_dir = cloud_root.parent / "previous_run/models/qwen25_gp4_lora"
     acceptance_report.parent.mkdir(parents=True)
     contract_manifest.parent.mkdir(parents=True)
     adapter_dir.mkdir(parents=True)
+    previous_adapter_dir.mkdir(parents=True)
     drive_hint.write_text("johnwickiller4444@gmail.com\n", encoding="utf-8")
     (adapter_dir / "adapter_config.json").write_text("{}\n", encoding="utf-8")
     (adapter_dir / "adapter_model.safetensors").write_text("weights\n", encoding="utf-8")
@@ -535,6 +537,26 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
                     "confirmed": True,
                     "confirmed_email": "johnwickiller4444@gmail.com",
                     "matches_expected": True,
+                },
+                "gp4_ws": {
+                    "path": str(cloud_root / "contract_snapshots/gp4_ws_ws-deep-rebuild-3526"),
+                    "branch": "ws-deep-rebuild-3526",
+                    "expected_branch": "ws-deep-rebuild-3526",
+                    "head": "3bbcb0726a4c3305c086c93e2b1e4a320471090b",
+                    "expected_commit": "3bbcb0726a4c3305c086c93e2b1e4a320471090b",
+                    "expected_commit_matches": True,
+                    "is_dirty": False,
+                },
+                "previous_adapter": {
+                    "path": str(previous_adapter_dir),
+                    "exists": True,
+                    "allowed_cloud_path": True,
+                    "artifact_exists": True,
+                },
+                "previous_run": {
+                    "old_dataset_run_id": "previous_run",
+                    "previous_adapter_run_id": "previous_run",
+                    "matched": True,
                 },
             }
         )
@@ -733,11 +755,51 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     assert provenance["drive_account"]["email"] == "johnwickiller4444@gmail.com"
     assert provenance["drive_account"]["confirmed"] is True
     assert provenance["drive_account"]["confirmed_email"] == "johnwickiller4444@gmail.com"
+    assert provenance["gp4_ws"]["branch"] == "ws-deep-rebuild-3526"
+    assert provenance["gp4_ws"]["expected_commit"] == (
+        "3bbcb0726a4c3305c086c93e2b1e4a320471090b"
+    )
+    assert provenance["gp4_ws"]["expected_commit_matches"] is True
     assert provenance["old_dataset_reuse"]["old_dataset_count"] == 1
     assert provenance["old_dataset_reuse"]["old_rows_kept"] == 20000
     assert provenance["old_dataset_reuse"]["old_dataset_fingerprints"][0]["sha256"] == (
         "old-dataset-sha"
     )
+    assert provenance["previous_adapter_reuse"]["path"] == str(previous_adapter_dir)
+    assert provenance["previous_adapter_reuse"]["artifact_exists"] is True
+    assert provenance["previous_adapter_reuse"]["previous_run_matched"] is True
+    assert {
+        "source": str(colab_readiness_report),
+        "metric": "previous_adapter_artifact_exists",
+        "actual": True,
+        "operator": "is",
+        "threshold": True,
+        "passed": True,
+    } in report["benchmark_rows"]
+    assert {
+        "source": str(colab_readiness_report),
+        "metric": "previous_run_matched",
+        "actual": True,
+        "operator": "is",
+        "threshold": True,
+        "passed": True,
+    } in report["benchmark_rows"]
+    assert {
+        "source": str(colab_readiness_report),
+        "metric": "gp4_ws_branch",
+        "actual": "ws-deep-rebuild-3526",
+        "operator": "==",
+        "threshold": "ws-deep-rebuild-3526",
+        "passed": True,
+    } in report["benchmark_rows"]
+    assert {
+        "source": str(colab_readiness_report),
+        "metric": "gp4_ws_expected_commit",
+        "actual": "3bbcb0726a4c3305c086c93e2b1e4a320471090b",
+        "operator": "matches",
+        "threshold": "3bbcb0726a4c3305c086c93e2b1e4a320471090b",
+        "passed": True,
+    } in report["benchmark_rows"]
     assert report["charts"][CHART_KEY_ACTUAL_VS_THRESHOLD][0]["label"] == (
         "intent_accuracy"
     )
@@ -776,6 +838,8 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     maintenance_markdown = markdown.split("## Maintenance Reference", 1)[1]
     assert "drive_account_matches" in maintenance_markdown
     assert "drive_account_confirmed" in maintenance_markdown
+    assert "previous_adapter_artifact_exists" in maintenance_markdown
+    assert "previous_run_matched" in maintenance_markdown
     assert "old_rows_kept" in maintenance_markdown
     assert "new_rows_requested" in maintenance_markdown
     assert "adapter_aggregate_sha256" in maintenance_markdown
@@ -783,6 +847,9 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     assert "provider_cloud_storage_ready" in markdown
     assert "install_action_performed" in markdown
     assert "eval_contract_branch" in markdown
+    assert "gp4_ws_branch" in markdown
+    assert "gp4_ws_expected_commit" in markdown
+    assert "gp4_ws_expected_commit_matches" in markdown
     assert "drive_account_hint" in markdown
     assert "old_rows_kept" in markdown
     assert "singularity: 12000" in markdown
@@ -793,6 +860,11 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     assert "drive_account_email: johnwickiller4444@gmail.com" in markdown
     assert "drive_account_matches: True" in markdown
     assert "drive_account_confirmed: True" in markdown
+    assert "gp4_ws_branch: ws-deep-rebuild-3526" in markdown
+    assert "gp4_ws_expected_commit_matches: True" in markdown
+    assert "previous_adapter_path" in markdown
+    assert "previous_adapter_artifact_exists: True" in markdown
+    assert "previous_run_matched: True" in markdown
     assert "old_dataset_count: 1" in markdown
     assert "old_rows_kept: 20000" in markdown
     assert "new_rows_requested: 280000" in markdown
@@ -800,6 +872,12 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     assert "provider_policy_sha256" in html
     assert "contract_manifest_sha256" in html
     assert "drive_account_email" in html
+    assert "gp4_ws_branch" in html
+    assert "gp4_ws_expected_commit" in html
+    assert "gp4_ws_expected_commit_matches" in html
+    assert "previous_adapter_path" in html
+    assert "previous_adapter_artifact_exists" in html
+    assert "previous_run_matched" in html
     assert "old_rows_kept" in html
     assert "adapter_total_bytes" in html
 

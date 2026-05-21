@@ -1,7 +1,9 @@
+import re
 import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+HARDENED_COLAB_READINESS_COMMIT = "201d1a43bb01a3c1ee6dd97c5dfb2c68e16c51bd"
 
 
 def test_model_card_states_no_production_adapter_until_acceptance_gate_passes() -> None:
@@ -39,6 +41,11 @@ def test_readme_documents_v2_300k_workflow_and_local_readiness() -> None:
     assert "drive_account_matches" in text
     assert "old_rows_kept" in text
     assert "adapter_aggregate_sha256" in text
+    assert "previous_adapter_artifact_exists" in text
+    assert "previous_run_matched" in text
+    assert "gp4_ws_branch" in text
+    assert "gp4_ws_expected_commit" in text
+    assert "gp4_ws_expected_commit_matches" in text
     assert "Adapter files remain in Google Drive storage" in text
     assert "Google Drive or approved cloud storage" not in text
     assert "dangerous OS command" in text
@@ -49,7 +56,9 @@ def test_readme_documents_v2_300k_workflow_and_local_readiness() -> None:
     assert "contract_snapshots/gp4_ws_ws-deep-rebuild-3526" in text
     assert "strict `GP4_WS` contract snapshot" in text
     assert "GP4_WS_EXPECTED_COMMIT" in text
+    assert "GP4_FACTORY_SOURCE_EXPECTED_COMMIT" in text
     assert "must be set before the notebook clones or reuses `GP4_WS`" in text
+    assert "must be set before the notebook clones or unpacks the factory source" in text
     assert "--old-dataset \"$GP4_OLD_DATASET\"" in text
     assert "--previous-adapter \"$GP4_PREVIOUS_ADAPTER\"" in text
     preflight = text.split("python3 scripts/colab_readiness_report.py", 1)[1].split(
@@ -86,6 +95,11 @@ def test_local_install_readiness_doc_exists() -> None:
     assert "drive_account_matches" in text
     assert "old_rows_kept" in text
     assert "adapter_aggregate_sha256" in text
+    assert "previous_adapter_artifact_exists" in text
+    assert "previous_run_matched" in text
+    assert "gp4_ws_branch" in text
+    assert "gp4_ws_expected_commit" in text
+    assert "gp4_ws_expected_commit_matches" in text
     assert "Adapter files remain in Google Drive storage" in text
 
 
@@ -100,16 +114,48 @@ def test_colab_v2_300k_runbook_pins_drive_reuse_and_reports() -> None:
     assert "GP4_OLD_DATASET" in text
     assert "accepted_300k.jsonl" in text
     assert "GP4_WS_EXPECTED_COMMIT" in text
+    assert "GP4_FACTORY_SOURCE_EXPECTED_COMMIT" in text
     assert "ws-deep-rebuild-3526" in text
     assert "3bbcb0726a4c3305c086c93e2b1e4a320471090b" in text
+    assert "export GP4_FACTORY_SOURCE_EXPECTED_COMMIT=" in text
     assert "benchmark_report_${RUN_ID}.html" in text
     assert "benchmark_report_${RUN_ID}.md" in text
     assert "Actual vs Threshold" in text
     assert "Acceptance Gate Status" in text
     assert "local-install-manifest_${RUN_ID}.json" in text
+    assert "`local-install-manifest_${RUN_ID}.json` is a Drive-stored readiness artifact, not a local install action." in text
     assert "completion_audit_${RUN_ID}.json" in text
     assert "Do not run training locally" in text
     assert "does not perform a local adapter install" in text
+
+
+def test_colab_v2_300k_runbook_source_commit_includes_hardened_gates() -> None:
+    text = (ROOT / "docs/colab_v2_300k_runbook.md").read_text(encoding="utf-8")
+    match = re.search(r"Factory source commit: `([0-9a-f]{40})`", text)
+
+    assert match is not None
+
+    pinned_commit = match.group(1)
+    subprocess.run(
+        ["git", "cat-file", "-e", f"{pinned_commit}^{{commit}}"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "merge-base",
+            "--is-ancestor",
+            HARDENED_COLAB_READINESS_COMMIT,
+            pinned_commit,
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_makefile_local_manifest_defaults_match_v2_cloud_workflow() -> None:
@@ -122,6 +168,12 @@ def test_makefile_local_manifest_defaults_match_v2_cloud_workflow() -> None:
         "$(CLOUD_ROOT)/reports/local-install-manifest_$(RUN_ID).json\n"
     ) in text
     assert "local_install_manifest_$(RUN_ID).json" not in text
+
+
+def test_env_example_requires_factory_source_commit_pin() -> None:
+    text = (ROOT / ".env.example").read_text(encoding="utf-8")
+
+    assert "GP4_FACTORY_SOURCE_EXPECTED_COMMIT=<required-factory-source-commit-sha>" in text
 
 
 def test_makefile_local_manifest_target_renders_cloud_only_readiness_command() -> None:

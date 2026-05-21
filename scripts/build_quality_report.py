@@ -196,7 +196,9 @@ def _provenance_payload(
             "adapter_path": _adapter_path_from_local_install(local_install),
         },
         "drive_account": _drive_account_provenance(reports),
+        "gp4_ws": _gp4_ws_provenance(reports),
         "old_dataset_reuse": _old_dataset_reuse_provenance(reports),
+        "previous_adapter_reuse": _previous_adapter_reuse_provenance(reports),
         "adapter": _adapter_provenance(adapter_dir),
     }
 
@@ -342,6 +344,22 @@ def _old_dataset_reuse_provenance(reports: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _gp4_ws_provenance(reports: dict[str, Any]) -> dict[str, Any]:
+    readiness_report = _first_report_with(reports, "gp4_ws")
+    gp4_ws = readiness_report.get("gp4_ws", {})
+    if not isinstance(gp4_ws, dict):
+        gp4_ws = {}
+    return {
+        "path": str(gp4_ws.get("path") or ""),
+        "branch": str(gp4_ws.get("branch") or ""),
+        "expected_branch": str(gp4_ws.get("expected_branch") or ""),
+        "head": str(gp4_ws.get("head") or ""),
+        "expected_commit": str(gp4_ws.get("expected_commit") or ""),
+        "expected_commit_matches": gp4_ws.get("expected_commit_matches") is True,
+        "is_dirty": gp4_ws.get("is_dirty") is True,
+    }
+
+
 def _drive_account_email_from_report(report: dict[str, Any]) -> str:
     hint_path = _drive_account_hint_path(report)
     if hint_path is not None and hint_path.is_file():
@@ -351,6 +369,27 @@ def _drive_account_email_from_report(report: dict[str, Any]) -> str:
             return ""
     raw_hint = report.get("drive_account_hint", "")
     return str(raw_hint).strip()
+
+
+def _previous_adapter_reuse_provenance(reports: dict[str, Any]) -> dict[str, Any]:
+    readiness_report = _first_report_with(reports, "previous_adapter")
+    previous_adapter = readiness_report.get("previous_adapter", {})
+    if not isinstance(previous_adapter, dict):
+        previous_adapter = {}
+    previous_run = readiness_report.get("previous_run", {})
+    if not isinstance(previous_run, dict):
+        previous_run = {}
+    return {
+        "path": str(previous_adapter.get("path") or ""),
+        "exists": previous_adapter.get("exists") is True,
+        "allowed_cloud_path": previous_adapter.get("allowed_cloud_path") is True,
+        "artifact_exists": previous_adapter.get("artifact_exists") is True,
+        "old_dataset_run_id": str(previous_run.get("old_dataset_run_id") or ""),
+        "previous_adapter_run_id": str(
+            previous_run.get("previous_adapter_run_id") or ""
+        ),
+        "previous_run_matched": previous_run.get("matched") is True,
+    }
 
 
 def _drive_account_hint_path(report: dict[str, Any]) -> Path | None:
@@ -368,7 +407,9 @@ def _benchmark_rows(
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     rows.extend(_drive_account_rows(source, report))
+    rows.extend(_gp4_ws_rows(source, report))
     rows.extend(_old_dataset_reuse_rows(source, report))
+    rows.extend(_previous_adapter_reuse_rows(source, report))
     rows.extend(_provider_rows(source, report))
     rows.extend(_eval_contract_rows(source, report))
     rows.extend(_local_install_rows(source, report))
@@ -465,6 +506,36 @@ def _drive_account_rows(source: str, report: dict[str, Any]) -> list[dict[str, A
     ]
 
 
+def _gp4_ws_rows(source: str, report: dict[str, Any]) -> list[dict[str, Any]]:
+    gp4_ws = report.get("gp4_ws", {})
+    if not isinstance(gp4_ws, dict) or not gp4_ws:
+        return []
+    return [
+        _row(
+            source,
+            "gp4_ws_branch",
+            gp4_ws.get("branch"),
+            "==",
+            gp4_ws.get("expected_branch") or EXPECTED_SOURCE_BRANCH,
+        ),
+        _row(
+            source,
+            "gp4_ws_expected_commit",
+            gp4_ws.get("head"),
+            "matches",
+            gp4_ws.get("expected_commit"),
+        ),
+        _row(
+            source,
+            "gp4_ws_expected_commit_matches",
+            gp4_ws.get("expected_commit_matches"),
+            "is",
+            True,
+        ),
+        _row(source, "gp4_ws_dirty", gp4_ws.get("is_dirty"), "is", False),
+    ]
+
+
 def _old_dataset_reuse_rows(source: str, report: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     if "old_dataset_count" in report:
@@ -489,6 +560,40 @@ def _old_dataset_reuse_rows(source: str, report: dict[str, Any]) -> list[dict[st
     if "new_rows_kept" in report:
         rows.append(_row(source, "new_rows_kept", _int_value(report.get("new_rows_kept")), ">=", 1))
     return rows
+
+
+def _previous_adapter_reuse_rows(source: str, report: dict[str, Any]) -> list[dict[str, Any]]:
+    if "previous_adapter" not in report and "previous_run" not in report:
+        return []
+    previous_adapter = report.get("previous_adapter", {})
+    if not isinstance(previous_adapter, dict):
+        previous_adapter = {}
+    previous_run = report.get("previous_run", {})
+    if not isinstance(previous_run, dict):
+        previous_run = {}
+    return [
+        _row(
+            source,
+            "previous_adapter_allowed_cloud_path",
+            previous_adapter.get("allowed_cloud_path"),
+            "is",
+            True,
+        ),
+        _row(
+            source,
+            "previous_adapter_artifact_exists",
+            previous_adapter.get("artifact_exists"),
+            "is",
+            True,
+        ),
+        _row(
+            source,
+            "previous_run_matched",
+            previous_run.get("matched"),
+            "is",
+            True,
+        ),
+    ]
 
 
 def _provider_rows(source: str, report: dict[str, Any]) -> list[dict[str, Any]]:
@@ -895,9 +1000,15 @@ def _markdown_provenance_lines(provenance: Any) -> list[str]:
     drive_account = provenance.get("drive_account", {})
     if not isinstance(drive_account, dict):
         drive_account = {}
+    gp4_ws = provenance.get("gp4_ws", {})
+    if not isinstance(gp4_ws, dict):
+        gp4_ws = {}
     old_dataset_reuse = provenance.get("old_dataset_reuse", {})
     if not isinstance(old_dataset_reuse, dict):
         old_dataset_reuse = {}
+    previous_adapter_reuse = provenance.get("previous_adapter_reuse", {})
+    if not isinstance(previous_adapter_reuse, dict):
+        previous_adapter_reuse = {}
     lines = [
         f"- report_schema_version: {provenance.get('report_schema_version', '')}",
         f"- generated_at_utc: {provenance.get('generated_at_utc', '')}",
@@ -915,11 +1026,21 @@ def _markdown_provenance_lines(provenance: Any) -> list[str]:
         f"- drive_account_confirmed: {drive_account.get('confirmed', False)}",
         f"- drive_account_confirmed_email: {drive_account.get('confirmed_email', '')}",
         f"- drive_account_matches: {drive_account.get('matches_expected', False)}",
+        f"- gp4_ws_path: {gp4_ws.get('path', '')}",
+        f"- gp4_ws_branch: {gp4_ws.get('branch', '')}",
+        f"- gp4_ws_expected_branch: {gp4_ws.get('expected_branch', '')}",
+        f"- gp4_ws_head: {gp4_ws.get('head', '')}",
+        f"- gp4_ws_expected_commit: {gp4_ws.get('expected_commit', '')}",
+        f"- gp4_ws_expected_commit_matches: {gp4_ws.get('expected_commit_matches', False)}",
         f"- old_dataset_count: {old_dataset_reuse.get('old_dataset_count', 0)}",
         f"- old_rows_valid: {old_dataset_reuse.get('old_rows_valid', 0)}",
         f"- old_rows_kept: {old_dataset_reuse.get('old_rows_kept', 0)}",
         f"- new_rows_requested: {old_dataset_reuse.get('new_rows_requested', 0)}",
         f"- new_rows_kept: {old_dataset_reuse.get('new_rows_kept', 0)}",
+        f"- previous_adapter_path: {previous_adapter_reuse.get('path', '')}",
+        f"- previous_adapter_artifact_exists: {previous_adapter_reuse.get('artifact_exists', False)}",
+        f"- previous_adapter_run_id: {previous_adapter_reuse.get('previous_adapter_run_id', '')}",
+        f"- previous_run_matched: {previous_adapter_reuse.get('previous_run_matched', False)}",
         f"- adapter_path: {adapter.get('path', '')}",
         f"- adapter_file_count: {adapter.get('file_count', 0)}",
         f"- adapter_total_bytes: {adapter.get('total_bytes', 0)}",
@@ -1031,19 +1152,50 @@ def _maintenance_reference_rows(provenance: Any) -> list[dict[str, Any]]:
     drive_account = provenance.get("drive_account", {})
     if not isinstance(drive_account, dict):
         drive_account = {}
+    gp4_ws = provenance.get("gp4_ws", {})
+    if not isinstance(gp4_ws, dict):
+        gp4_ws = {}
     old_dataset_reuse = provenance.get("old_dataset_reuse", {})
     if not isinstance(old_dataset_reuse, dict):
         old_dataset_reuse = {}
+    previous_adapter_reuse = provenance.get("previous_adapter_reuse", {})
+    if not isinstance(previous_adapter_reuse, dict):
+        previous_adapter_reuse = {}
     return [
         {"key": "report_schema_version", "value": provenance.get("report_schema_version", "")},
         {"key": "cloud_root", "value": provenance.get("cloud_root", "")},
         {"key": "drive_account_confirmed", "value": drive_account.get("confirmed", False)},
         {"key": "drive_account_matches", "value": drive_account.get("matches_expected", False)},
+        {"key": "gp4_ws_branch", "value": gp4_ws.get("branch", "")},
+        {
+            "key": "gp4_ws_expected_commit",
+            "value": gp4_ws.get("expected_commit", ""),
+        },
+        {
+            "key": "gp4_ws_expected_commit_matches",
+            "value": gp4_ws.get("expected_commit_matches", False),
+        },
         {"key": "old_dataset_count", "value": old_dataset_reuse.get("old_dataset_count", 0)},
         {"key": "old_rows_valid", "value": old_dataset_reuse.get("old_rows_valid", 0)},
         {"key": "old_rows_kept", "value": old_dataset_reuse.get("old_rows_kept", 0)},
         {"key": "new_rows_requested", "value": old_dataset_reuse.get("new_rows_requested", 0)},
         {"key": "new_rows_kept", "value": old_dataset_reuse.get("new_rows_kept", 0)},
+        {
+            "key": "previous_adapter_path",
+            "value": previous_adapter_reuse.get("path", ""),
+        },
+        {
+            "key": "previous_adapter_artifact_exists",
+            "value": previous_adapter_reuse.get("artifact_exists", False),
+        },
+        {
+            "key": "previous_adapter_run_id",
+            "value": previous_adapter_reuse.get("previous_adapter_run_id", ""),
+        },
+        {
+            "key": "previous_run_matched",
+            "value": previous_adapter_reuse.get("previous_run_matched", False),
+        },
         {
             "key": "target_repo_expected_commit",
             "value": local_install.get("target_repo_expected_commit", ""),

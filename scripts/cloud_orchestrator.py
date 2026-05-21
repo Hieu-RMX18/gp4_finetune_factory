@@ -109,6 +109,10 @@ def main() -> int:
     parser.add_argument("--preset", choices=["legacy", "v2-300k"], default="legacy")
     args = parser.parse_args()
 
+    if args.preset == "v2-300k" and not args.dry_run and args.previous_adapter is None:
+        print("blocked_reason=v2 300k run requires --previous-adapter")
+        return 1
+
     try:
         validate_cloud_run_paths(
             cloud_root=args.cloud_root,

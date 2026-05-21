@@ -238,6 +238,42 @@ def test_train_phase_passes_previous_adapter_to_training_script(
     assert command[command.index("--resume-from-adapter") + 1] == str(previous_adapter)
 
 
+def test_v2_300k_preset_requires_previous_adapter(tmp_path: Path) -> None:
+    cloud_root = tmp_path / "cloud"
+    seed = tmp_path / "seed.jsonl"
+    old_dataset = cloud_root.parent / "previous/data/validated/accepted_300k.jsonl"
+    seed.write_text('{"id":"seed-1"}\n', encoding="utf-8")
+    old_dataset.parent.mkdir(parents=True)
+    old_dataset.write_text('{"id":"old-1"}\n', encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/cloud_orchestrator.py",
+            "--run-id",
+            "missing-previous-adapter",
+            "--cloud-root",
+            str(cloud_root),
+            "--seed",
+            str(seed),
+            "--phases",
+            "train",
+            "--preset",
+            "v2-300k",
+            "--old-dataset",
+            str(old_dataset),
+            "--allow-tmp",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "v2 300k run requires --previous-adapter" in result.stdout
+
+
 def test_eval_phase_uses_explicit_gp4_ws_contract_repo(
     tmp_path: Path,
     monkeypatch,

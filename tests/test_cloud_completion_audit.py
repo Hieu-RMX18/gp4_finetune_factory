@@ -240,6 +240,11 @@ def write_train_infer_evidence(cloud_root: Path, run_id: str) -> None:
             "val_path": str(cloud_root / "data/splits/val.jsonl"),
             "train_rows": 45000,
             "val_rows": 2000,
+            "resume_from_adapter": str(
+                cloud_root.parent / "previous_run/models/qwen25_gp4_lora"
+            ),
+            "resume_from_adapter_allowed_cloud_path": True,
+            "resume_from_adapter_artifact_exists": True,
         },
     )
     write_json(
@@ -255,7 +260,7 @@ def write_train_infer_evidence(cloud_root: Path, run_id: str) -> None:
     )
 
 def write_data_prep_evidence(cloud_root: Path, run_id: str) -> None:
-    old_dataset = cloud_root / "previous_run/data/validated/accepted_300k.jsonl"
+    old_dataset = cloud_root.parent / "previous_run/data/validated/accepted_300k.jsonl"
     old_dataset.parent.mkdir(parents=True, exist_ok=True)
     old_dataset.write_text('{"id":"old-1"}\n', encoding="utf-8")
     old_dataset_sha = hashlib.sha256(old_dataset.read_bytes()).hexdigest()
@@ -409,10 +414,12 @@ def write_benchmark_report_evidence(cloud_root: Path, run_id: str) -> None:
         "<!doctype html><h1>GP4 V2 Benchmark Report</h1>"
         "<h2>Benchmark Columns</h2><table></table>"
         "provider_cloud_storage_ready install_action_performed "
+        "gp4_ws_branch gp4_ws_expected_commit gp4_ws_expected_commit_matches "
         "eval_contract_branch target_repo_branch "
         "target_repo_commit "
         "locked_v2_eval_intent_accuracy locked_v2_eval_exact_match "
         "locked_v2_eval_rows dangerous_os_command_output local_artifact_usage "
+        "previous_adapter_artifact_exists previous_run_matched "
         "dangerous_os_command unsupported_tool_hallucination "
         "<h2>Actual vs Threshold</h2><svg></svg>"
         "<h2>Acceptance Gate Status</h2><svg></svg>"
@@ -423,7 +430,9 @@ def write_benchmark_report_evidence(cloud_root: Path, run_id: str) -> None:
         "</table>"
         "<h2>Maintenance Reference</h2><table>"
         "drive_account_confirmed drive_account_matches old_dataset_count old_rows_kept "
-        "new_rows_requested adapter_aggregate_sha256"
+        "new_rows_requested gp4_ws_branch gp4_ws_expected_commit "
+        "gp4_ws_expected_commit_matches previous_adapter_artifact_exists previous_run_matched "
+        "adapter_aggregate_sha256"
         "</table>\n",
         encoding="utf-8",
     )
@@ -435,6 +444,9 @@ def write_benchmark_report_evidence(cloud_root: Path, run_id: str) -> None:
         "| acceptance | intent_accuracy | 0.96 | >= | 0.95 | True |\n"
         "| provider | provider_cloud_storage_ready | True | is | True | True |\n"
         "| local | install_action_performed | False | is | False | True |\n"
+        "| readiness | gp4_ws_branch | ws-deep-rebuild-3526 | == | ws-deep-rebuild-3526 | True |\n"
+        "| readiness | gp4_ws_expected_commit | abc1234def56 | matches | abc1234def56 | True |\n"
+        "| readiness | gp4_ws_expected_commit_matches | True | is | True | True |\n"
         "| eval | eval_contract_branch | ws-deep-rebuild-3526 | == | ws-deep-rebuild-3526 | True |\n"
         "| local | target_repo_branch | ws-deep-rebuild-3526 | == | ws-deep-rebuild-3526 | True |\n"
         "| local | target_repo_commit | abc1234def56 | == | abc1234def56 | True |\n"
@@ -443,6 +455,8 @@ def write_benchmark_report_evidence(cloud_root: Path, run_id: str) -> None:
         "| acceptance | locked_v2_eval_rows | 80 | >= | 80 | True |\n"
         "| acceptance | dangerous_os_command_output | 0 | <= | 0 | True |\n"
         "| acceptance | local_artifact_usage | 0 | <= | 0 | True |\n"
+        "| readiness | previous_adapter_artifact_exists | True | is | True | True |\n"
+        "| readiness | previous_run_matched | True | is | True | True |\n"
         "| quota | v2_dangerous_os_command_rows | 9000 | >= | 9000 | True |\n"
         "| quota | v2_unsupported_tool_hallucination_rows | 9000 | >= | 9000 | True |\n"
         "\n"
@@ -457,9 +471,14 @@ def write_benchmark_report_evidence(cloud_root: Path, run_id: str) -> None:
         "## Maintenance Reference\n\n"
         "- drive_account_confirmed: True\n"
         "- drive_account_matches: True\n"
+        "- gp4_ws_branch: ws-deep-rebuild-3526\n"
+        "- gp4_ws_expected_commit: abc1234def56\n"
+        "- gp4_ws_expected_commit_matches: True\n"
         "- old_dataset_count: 1\n"
         "- old_rows_kept: 20000\n"
         "- new_rows_requested: 280000\n"
+        "- previous_adapter_artifact_exists: True\n"
+        "- previous_run_matched: True\n"
         "- adapter_aggregate_sha256: adapter-aggregate-sha\n",
         encoding="utf-8",
     )
@@ -491,6 +510,30 @@ def write_benchmark_report_evidence(cloud_root: Path, run_id: str) -> None:
                     "actual": False,
                     "operator": "is",
                     "threshold": False,
+                    "passed": True,
+                },
+                {
+                    "source": "readiness",
+                    "metric": "gp4_ws_branch",
+                    "actual": "ws-deep-rebuild-3526",
+                    "operator": "==",
+                    "threshold": "ws-deep-rebuild-3526",
+                    "passed": True,
+                },
+                {
+                    "source": "readiness",
+                    "metric": "gp4_ws_expected_commit",
+                    "actual": "abc1234def56",
+                    "operator": "matches",
+                    "threshold": "abc1234def56",
+                    "passed": True,
+                },
+                {
+                    "source": "readiness",
+                    "metric": "gp4_ws_expected_commit_matches",
+                    "actual": True,
+                    "operator": "is",
+                    "threshold": True,
                     "passed": True,
                 },
                 {
@@ -555,6 +598,22 @@ def write_benchmark_report_evidence(cloud_root: Path, run_id: str) -> None:
                     "actual": 0,
                     "operator": "<=",
                     "threshold": 0,
+                    "passed": True,
+                },
+                {
+                    "source": "readiness",
+                    "metric": "previous_adapter_artifact_exists",
+                    "actual": True,
+                    "operator": "is",
+                    "threshold": True,
+                    "passed": True,
+                },
+                {
+                    "source": "readiness",
+                    "metric": "previous_run_matched",
+                    "actual": True,
+                    "operator": "is",
+                    "threshold": True,
                     "passed": True,
                 },
                 {
@@ -803,6 +862,25 @@ def test_cloud_completion_audit_passes_for_complete_cloud_run(
     assert adapter_files["adapter_model.safetensors"]["size_bytes"] == 8
 
 
+def test_cloud_completion_audit_accepts_previous_run_dataset_sibling_drive_root(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "sibling-previous-run"
+    write_complete_cloud_evidence(cloud_root, run_id)
+
+    payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=False,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in payload["checklist"] if not item["passed"]}
+    assert "old_dataset_reuse_verified" not in failed
+
+
 def test_cloud_completion_audit_rejects_missing_gp4_ws_snapshot_path(
     tmp_path: Path,
 ) -> None:
@@ -959,6 +1037,56 @@ def test_cloud_completion_audit_rejects_previous_adapter_outside_drive(
 
     failed = {item["id"] for item in audit_payload["checklist"] if not item["passed"]}
     assert "colab_readiness_verified" in failed
+
+
+def test_cloud_completion_audit_rejects_train_without_previous_adapter_resume(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "train-missing-previous-adapter"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    train_report = cloud_root / "reports" / f"train_{run_id}.json"
+    payload = json.loads(train_report.read_text(encoding="utf-8"))
+    payload["resume_from_adapter"] = ""
+    payload["resume_from_adapter_allowed_cloud_path"] = False
+    payload["resume_from_adapter_artifact_exists"] = False
+    write_json(train_report, payload)
+
+    audit_payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in audit_payload["checklist"] if not item["passed"]}
+    assert "train_phase_outputs_verified" in failed
+
+
+def test_cloud_completion_audit_rejects_train_resume_mismatch(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "train-resume-mismatch"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    train_report = cloud_root / "reports" / f"train_{run_id}.json"
+    payload = json.loads(train_report.read_text(encoding="utf-8"))
+    payload["resume_from_adapter"] = str(
+        cloud_root.parent / "other_previous/models/qwen25_gp4_lora"
+    )
+    write_json(train_report, payload)
+
+    audit_payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in audit_payload["checklist"] if not item["passed"]}
+    assert "train_phase_outputs_verified" in failed
 
 
 def test_cloud_completion_audit_rejects_contract_snapshot_wrong_branch(

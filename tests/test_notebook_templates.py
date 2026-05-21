@@ -13,7 +13,17 @@ def test_colab_notebook_can_clone_pushed_branch_without_source_bundle() -> None:
     setup_source = "".join(notebook["cells"][1]["source"])
 
     assert "SOURCE_BRANCH = os.environ.get('GP4_SOURCE_BRANCH'" in setup_source
-    assert "git clone --branch {SOURCE_BRANCH}" in setup_source
+    assert "FACTORY_SOURCE_EXPECTED_COMMIT = os.environ.get('GP4_FACTORY_SOURCE_EXPECTED_COMMIT'" in setup_source
+    assert "GP4_FACTORY_SOURCE_EXPECTED_COMMIT is required" in setup_source
+    assert "len(FACTORY_SOURCE_EXPECTED_COMMIT) < 12" in setup_source
+    assert "!git clone --branch {SOURCE_BRANCH}" not in setup_source
+    assert "subprocess.run(['git', 'clone', '--branch', SOURCE_BRANCH" in setup_source
+    assert "checkout', '--detach', FACTORY_SOURCE_EXPECTED_COMMIT" in setup_source
+    assert "source_revision.json" in setup_source
+    assert "factory_source_commit" in setup_source
+    assert "Source bundle must include source_revision.json with factory_source_commit" in setup_source
+    assert "Factory source commit mismatch" in setup_source
+    assert "factory_source_revision.json" in setup_source
     assert "if Path(SOURCE_BUNDLE).exists()" in setup_source
     assert "os.chdir('/content')" in setup_source
     assert "GP4_WS_REPO_URL = os.environ.get('GP4_WS_REPO_URL'" in setup_source
@@ -110,7 +120,7 @@ def test_cloud_notebooks_name_final_benchmark_and_audit_artifacts() -> None:
             for cell in notebook["cells"]
         )
 
-        assert "completion_audit_${RUN_ID}.json" in source
+        assert "completion_audit_{RUN_ID}.json" in source
         assert "benchmark_report_${RUN_ID}.html" in source
         assert "benchmark_report_${RUN_ID}.md" in source
     assert "Maintenance Reference" in source
@@ -130,6 +140,17 @@ def test_colab_notebook_command_surface_excludes_dangerous_os_commands() -> None
     assert "sudo" not in source
     assert "apt-get" not in source
     assert "WORK_DIR = Path('/content/gp4_finetune_factory_source')" in source
+    assert "EXPECTED_WORK_DIR = Path('/content/gp4_finetune_factory_source')" in source
+    assert "WORK_DIR.resolve(strict=False) != EXPECTED_WORK_DIR" in source
+    assert "raise RuntimeError(f'Unsafe WORK_DIR cleanup path: {WORK_DIR}')" in source
+    assert "archive.extractall(" not in source
+    assert "for member in archive.infolist():" in source
+    assert "Unsafe source bundle path" in source
+    for cell in notebook.get("cells", []):
+        if cell.get("cell_type") != "code":
+            continue
+        for line in cell.get("source", []):
+            assert not line.lstrip().startswith("!")
 
 
 def test_kaggle_react_notebook_is_disabled_in_drive_only_workflow() -> None:

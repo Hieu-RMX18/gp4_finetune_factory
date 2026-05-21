@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
+import subprocess
 import zipfile
 from pathlib import Path
 
@@ -51,7 +53,8 @@ def main() -> int:
         outputs=[output],
         allow_tmp=args.allow_tmp,
     )
-    _write_bundle(output, paths)
+    source_commit = _repo_head(ROOT)
+    _write_bundle(output, paths, source_commit=source_commit)
     digest = _sha256(output)
 
     print(f"path={output} bytes={output.stat().st_size} sha256={digest}")
@@ -78,7 +81,7 @@ def _collect_bundle_paths(root: Path) -> list[Path]:
     return [paths_by_name[name] for name in sorted(paths_by_name)]
 
 
-def _write_bundle(output_path: Path, paths: list[Path]) -> None:
+def _write_bundle(output_path: Path, paths: list[Path], *, source_commit: str) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(
         output_path,
@@ -86,13 +89,36 @@ def _write_bundle(output_path: Path, paths: list[Path]) -> None:
         compression=zipfile.ZIP_DEFLATED,
         compresslevel=9,
     ) as archive:
-        for path in paths:
-            archive_name = path.relative_to(ROOT).as_posix()
-            info = zipfile.ZipInfo(archive_name, ZIP_DATE)
-            info.compress_type = zipfile.ZIP_DEFLATED
-            info.create_system = 3
-            info.external_attr = ZIP_FILE_MODE
-            archive.writestr(info, path.read_bytes())
+        entries = {
+            path.relative_to(ROOT).as_posix(): path.read_bytes()
+            for path in paths
+        }
+        entries["source_revision.json"] = (
+            json.dumps(
+                {"factory_source_commit": source_commit},
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        ).encode("utf-8")
+        for archive_name in sorted(entries):
+            _write_zip_bytes(archive, archive_name, entries[archive_name])
+
+def _write_zip_bytes(archive: zipfile.ZipFile, archive_name: str, data: bytes) -> None:
+    info = zipfile.ZipInfo(archive_name, ZIP_DATE)
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.create_system = 3
+    info.external_attr = ZIP_FILE_MODE
+    archive.writestr(info, data)
+
+def _repo_head(root: Path) -> str:
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
 
 
 def _sha256(path: Path) -> str:

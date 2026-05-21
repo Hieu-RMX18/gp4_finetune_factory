@@ -94,6 +94,8 @@ The Colab notebook also prepares a read-only `gp4_ws` contract snapshot at
 strict `GP4_WS` contract snapshot with fallback disabled.
 `GP4_WS_EXPECTED_COMMIT` must be set before the notebook clones or reuses `GP4_WS`;
 the notebook fails if the snapshot commit does not match that pin.
+`GP4_FACTORY_SOURCE_EXPECTED_COMMIT` must be set before the notebook clones or unpacks the factory source; clone fallback checks out that commit, and Drive
+source bundles must include `source_revision.json` with `factory_source_commit`.
 The readiness manifest must record the expected branch and matching
 expected commit before it can report `ready_for_local_install=true`.
 
@@ -117,11 +119,14 @@ contract is centralized in
 that module when adding columns, chart keys, or reference rows.
 
 The benchmark report must keep provenance rows for `provider_policy_sha256`,
-`contract_manifest_sha256`, and `adapter_total_bytes`. Its Maintenance
-Reference must keep `drive_account_confirmed`, `drive_account_matches`,
-`old_dataset_count`, `old_rows_kept`, `new_rows_requested`, and
-`adapter_aggregate_sha256` so later upgrade runs can compare Drive account
-continuity, old dataset reuse, and adapter checksums.
+`contract_manifest_sha256`, `adapter_total_bytes`, `gp4_ws_branch`,
+`gp4_ws_expected_commit`, and `gp4_ws_expected_commit_matches`. Its
+Maintenance Reference must keep `drive_account_confirmed`,
+`drive_account_matches`, `old_dataset_count`, `old_rows_kept`,
+`new_rows_requested`, `previous_adapter_artifact_exists`,
+`previous_run_matched`, and `adapter_aggregate_sha256` so later upgrade runs
+can compare Drive account continuity, old dataset reuse, previous adapter
+reuse, gp4_ws contract pinning, and adapter checksums.
 
 This repository does not install the adapter into the local robot workspace.
 The robot execution remains behind validation, safety, planning, approval, and hardware gates.

@@ -40,6 +40,9 @@ REQUIRED_MARKDOWN_TOKENS = (
 REQUIRED_BENCHMARK_ROW_TOKENS = (
     "provider_cloud_storage_ready",
     "install_action_performed",
+    "gp4_ws_branch",
+    "gp4_ws_expected_commit",
+    "gp4_ws_expected_commit_matches",
     "eval_contract_branch",
     "target_repo_branch",
     "target_repo_commit",
@@ -48,6 +51,8 @@ REQUIRED_BENCHMARK_ROW_TOKENS = (
     "locked_v2_eval_rows",
     "dangerous_os_command_output",
     "local_artifact_usage",
+    "previous_adapter_artifact_exists",
+    "previous_run_matched",
     "dangerous_os_command",
     "unsupported_tool_hallucination",
 )
@@ -61,8 +66,13 @@ REQUIRED_PROVENANCE_TOKENS = (
 REQUIRED_MAINTENANCE_REFERENCE_TOKENS = (
     "drive_account_confirmed",
     "drive_account_matches",
+    "gp4_ws_branch",
+    "gp4_ws_expected_commit",
+    "gp4_ws_expected_commit_matches",
     "old_dataset_count",
     "old_rows_kept",
     "new_rows_requested",
+    "previous_adapter_artifact_exists",
+    "previous_run_matched",
     "adapter_aggregate_sha256",
 )

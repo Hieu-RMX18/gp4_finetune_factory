@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import os
 import traceback
 from pathlib import Path
@@ -152,7 +153,7 @@ def _train(
 ) -> None:
     import torch
     from datasets import Dataset
-    from transformers import DataCollatorForLanguageModeling, Trainer, TrainingArguments
+    from trl import SFTConfig, SFTTrainer
     from unsloth import FastLanguageModel
 
     if not torch.cuda.is_available():
@@ -188,27 +189,26 @@ def _train(
         )
 
     train_dataset = Dataset.from_list(
-        _tokenize_training_rows(read_jsonl(train_path), tokenizer, training["max_seq_length"])
+        _format_training_rows(read_jsonl(train_path), tokenizer)
     )
     val_dataset = Dataset.from_list(
-        _tokenize_training_rows(read_jsonl(val_path), tokenizer, training["max_seq_length"])
+        _format_training_rows(read_jsonl(val_path), tokenizer)
     )
-    trainer = Trainer(
+    trainer = _build_sft_trainer(
+        sft_trainer_cls=SFTTrainer,
+        sft_config_cls=SFTConfig,
         model=model,
+        tokenizer=tokenizer,
         train_dataset=train_dataset,
-        eval_dataset=val_dataset,
-        args=_training_args(TrainingArguments, output_dir=output_dir, training=training),
-        data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
-        processing_class=tokenizer,
+        val_dataset=val_dataset,
+        output_dir=output_dir,
+        training=training,
     )
 
     train_result = trainer.train()
     output_dir.mkdir(parents=True, exist_ok=True)
-    if hasattr(model, "save_pretrained_merged"):
-        model.save_pretrained_merged(str(output_dir), tokenizer, save_method="lora")
-    else:
-        trainer.save_model(str(output_dir))
-        tokenizer.save_pretrained(str(output_dir))
+    model.save_pretrained(str(output_dir))
+    tokenizer.save_pretrained(str(output_dir))
 
     report.update(
         {
@@ -233,45 +233,78 @@ def _format_training_rows(rows: list[dict[str, Any]], tokenizer: Any) -> list[di
     ]
 
 
-def _tokenize_training_rows(
-    rows: list[dict[str, Any]], tokenizer: Any, max_seq_length: int
-) -> list[dict[str, list[int]]]:
-    texts = [row["text"] for row in _format_training_rows(rows, tokenizer)]
-    encoded = tokenizer(
-        texts,
-        truncation=True,
-        max_length=max_seq_length,
-        padding=False,
-    )
-    return [
-        {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-        }
-        for input_ids, attention_mask in zip(
-            encoded["input_ids"],
-            encoded["attention_mask"],
-            strict=True,
-        )
-    ]
-
-
-def _training_args(
-    training_args_cls: Any, *, output_dir: Path, training: dict[str, Any]
+def _build_sft_trainer(
+    *,
+    sft_trainer_cls: Any,
+    sft_config_cls: Any,
+    model: Any,
+    tokenizer: Any,
+    train_dataset: Any,
+    val_dataset: Any,
+    output_dir: Path,
+    training: dict[str, Any],
 ) -> Any:
-    return training_args_cls(
-        output_dir=str(output_dir),
-        max_steps=training["max_steps"],
-        per_device_train_batch_size=training["per_device_train_batch_size"],
-        gradient_accumulation_steps=training["gradient_accumulation_steps"],
-        learning_rate=training["learning_rate"],
-        logging_steps=training["logging_steps"],
-        save_steps=training["save_steps"],
-        seed=training["seed"],
-        optim="adamw_8bit",
-        dataloader_num_workers=0,
-        report_to=[],
+    trainer_kwargs: dict[str, Any] = {
+        "model": model,
+        "train_dataset": train_dataset,
+        "eval_dataset": val_dataset,
+        "args": _build_sft_config(
+            sft_config_cls,
+            output_dir=output_dir,
+            training=training,
+        ),
+    }
+    if _constructor_accepts(sft_trainer_cls, "processing_class"):
+        trainer_kwargs["processing_class"] = tokenizer
+    else:
+        trainer_kwargs["tokenizer"] = tokenizer
+    if _constructor_accepts(sft_trainer_cls, "dataset_text_field"):
+        trainer_kwargs["dataset_text_field"] = "text"
+    if _constructor_accepts(sft_trainer_cls, "max_seq_length"):
+        trainer_kwargs["max_seq_length"] = training["max_seq_length"]
+    if _constructor_accepts(sft_trainer_cls, "packing"):
+        trainer_kwargs["packing"] = False
+    return sft_trainer_cls(**trainer_kwargs)
+
+
+def _build_sft_config(
+    sft_config_cls: Any, *, output_dir: Path, training: dict[str, Any]
+) -> Any:
+    kwargs: dict[str, Any] = {
+        "output_dir": str(output_dir),
+        "max_steps": training["max_steps"],
+        "per_device_train_batch_size": training["per_device_train_batch_size"],
+        "gradient_accumulation_steps": training["gradient_accumulation_steps"],
+        "learning_rate": training["learning_rate"],
+        "logging_steps": training["logging_steps"],
+        "save_steps": training["save_steps"],
+        "seed": training["seed"],
+        "optim": "adamw_8bit",
+        "dataloader_num_workers": 0,
+        "report_to": [],
+    }
+    if _constructor_accepts(sft_config_cls, "max_length"):
+        kwargs["max_length"] = training["max_seq_length"]
+    elif _constructor_accepts(sft_config_cls, "max_seq_length"):
+        kwargs["max_seq_length"] = training["max_seq_length"]
+    if _constructor_accepts(sft_config_cls, "packing"):
+        kwargs["packing"] = False
+    if _constructor_accepts(sft_config_cls, "dataset_text_field"):
+        kwargs["dataset_text_field"] = "text"
+    return sft_config_cls(**kwargs)
+
+
+def _constructor_accepts(cls: Any, parameter: str) -> bool:
+    try:
+        signature = inspect.signature(cls)
+    except (TypeError, ValueError):
+        return True
+    parameters = signature.parameters
+    return parameter in parameters or any(
+        param.kind is inspect.Parameter.VAR_KEYWORD
+        for param in parameters.values()
     )
+
 
 def _validate_resume_adapter(
     resume_from_adapter: Path | None,

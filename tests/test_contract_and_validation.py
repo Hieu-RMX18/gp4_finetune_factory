@@ -1215,28 +1215,49 @@ def test_train_unsloth_formats_only_messages_for_training_text() -> None:
     }
 
 
-def test_train_unsloth_tokenizes_text_without_raw_json_columns() -> None:
+def test_train_unsloth_builds_sft_trainer_from_chat_text_rows(tmp_path: Path) -> None:
     import train_unsloth_qlora
 
-    rows = [_example({"intent": "stop", "joints": {"joint_1": 0.0}})]
+    captured: dict[str, object] = {}
 
-    class Tokenizer:
-        def apply_chat_template(
-            self, messages: list[dict[str, str]], *, tokenize: bool
-        ) -> str:
-            return messages[-1]["content"]
+    class SFTConfig:
+        def __init__(self, **kwargs: object) -> None:
+            captured["config"] = kwargs
 
-        def __call__(
-            self, texts: list[str], *, truncation: bool, max_length: int, padding: bool
-        ) -> dict[str, list[list[int]]]:
-            assert truncation is True
-            assert max_length == 16
-            assert padding is False
-            return {"input_ids": [[1, 2]], "attention_mask": [[1, 1]]}
+    class SFTTrainer:
+        def __init__(self, **kwargs: object) -> None:
+            captured["trainer"] = kwargs
 
-    tokenized = train_unsloth_qlora._tokenize_training_rows(rows, Tokenizer(), 16)
+    training = {
+        "max_seq_length": 2048,
+        "max_steps": 100,
+        "per_device_train_batch_size": 2,
+        "gradient_accumulation_steps": 4,
+        "learning_rate": 2e-4,
+        "logging_steps": 5,
+        "save_steps": 25,
+        "seed": 3407,
+    }
 
-    assert tokenized == [{"input_ids": [1, 2], "attention_mask": [1, 1]}]
+    trainer = train_unsloth_qlora._build_sft_trainer(
+        sft_trainer_cls=SFTTrainer,
+        sft_config_cls=SFTConfig,
+        model="model",
+        tokenizer="tokenizer",
+        train_dataset=[{"text": "train"}],
+        val_dataset=[{"text": "val"}],
+        output_dir=tmp_path / "adapter",
+        training=training,
+    )
+
+    assert isinstance(trainer, SFTTrainer)
+    assert captured["config"]["output_dir"] == str(tmp_path / "adapter")
+    assert captured["config"]["max_length"] == 2048
+    assert captured["config"]["packing"] is False
+    assert captured["config"]["optim"] == "adamw_8bit"
+    assert captured["trainer"]["processing_class"] == "tokenizer"
+    assert captured["trainer"]["train_dataset"] == [{"text": "train"}]
+    assert captured["trainer"]["eval_dataset"] == [{"text": "val"}]
 
 
 def test_train_unsloth_writes_blocked_report_for_runtime_failure(
@@ -1599,6 +1620,18 @@ def test_build_retrain_bundle_writes_reproducible_cloud_source_zip(
         assert "notebooks/lightning_qwen25_gp4_unsloth.ipynb" not in names
         assert "scripts/train_unsloth_qlora.py" in names
         assert "Makefile" in names
+        assert "source_revision.json" in names
+        source_revision = json.loads(
+            archive.read("source_revision.json").decode("utf-8")
+        )
+        expected_commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        assert source_revision["factory_source_commit"] == expected_commit
         assert not any(name.startswith("artifact_downloads/") for name in names)
         assert not any(name.startswith("data/generated/") for name in names)
         assert not any(name.startswith("data/splits/") for name in names)
