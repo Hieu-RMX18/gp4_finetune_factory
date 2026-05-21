@@ -9,7 +9,7 @@ from typing import Any
 
 from check_cloud_storage_policy import CloudStoragePolicy, is_allowed_cloud_path
 from cloud_runtime import CloudPathError, validate_cloud_run_paths
-from factory_common import git_value, read_json, read_yaml, write_json
+from factory_common import git_has_real_changes, git_value, read_json, read_yaml, write_json
 from package_adapter import adapter_artifact_exists
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -148,7 +148,7 @@ def _target_repo_state(
         "head": head,
         "head_full": head_full,
         "expected_commit_matches": _commit_matches(head_full or head, expected_commit),
-        "is_dirty": bool(git_value(target_repo, "status", "--short")) if exists else False,
+        "is_dirty": git_has_real_changes(target_repo) if exists else False,
     }
 
 

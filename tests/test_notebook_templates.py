@@ -46,6 +46,12 @@ def test_colab_notebook_can_clone_pushed_branch_without_source_bundle() -> None:
     assert "GP4_WS must live under CLOUD_ROOT/contract_snapshots" in setup_source
     assert "Path(GP4_WS).resolve(strict=False)" in setup_source
     assert "Path(GP4_WS).parent.mkdir(parents=True, exist_ok=True)" in setup_source
+    assert "def gp4_ws_snapshot_needs_refresh(gp4_ws_path):" in setup_source
+    assert "def configure_gp4_ws_git_for_drive(gp4_ws_path):" in setup_source
+    assert "'core.fileMode'" in setup_source
+    assert "'update-index', '--refresh'" in setup_source
+    assert "dirty_gp4_ws_snapshots" in setup_source
+    assert "Moved dirty/stale GP4_WS snapshot to:" in setup_source
     assert "subprocess.run(['git', 'clone', '--branch', GP4_WS_BRANCH" in setup_source
     assert setup_source.index("if not GP4_WS_EXPECTED_COMMIT:") < setup_source.index(
         "subprocess.run(['git', 'clone', '--branch', GP4_WS_BRANCH"

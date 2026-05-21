@@ -173,6 +173,21 @@ def git_value(repo: Path, *args: str) -> str:
         return ""
     return result.stdout.strip()
 
+def git_has_real_changes(repo: Path) -> bool:
+    if _git_quiet(repo, "diff", "--quiet") != 0:
+        return True
+    if _git_quiet(repo, "diff", "--cached", "--quiet") != 0:
+        return True
+    return bool(git_value(repo, "ls-files", "--others", "--exclude-standard"))
+
+def _git_quiet(repo: Path, *args: str) -> int:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).returncode
+
 
 def resolve_contract_repo(
     repo: Path | str | None = None,
@@ -209,7 +224,7 @@ def load_repo_contract(repo: Path | str | None = None) -> dict[str, Any]:
         "repo_path": str(repo),
         "branch": git_value(repo, "branch", "--show-current"),
         "head": git_value(repo, "rev-parse", "--short", "HEAD"),
-        "is_dirty": bool(git_value(repo, "status", "--short")),
+        "is_dirty": git_has_real_changes(repo),
         "schema_primitives": sorted(
             llm_schema["properties"]["primitive_type"]["enum"]
         ),

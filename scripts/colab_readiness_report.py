@@ -13,7 +13,7 @@ from cloud_runtime import (
     sha256_file,
     validate_cloud_output_path,
 )
-from factory_common import git_value, read_yaml, write_json
+from factory_common import git_has_real_changes, git_value, read_yaml, write_json
 from package_adapter import adapter_artifact_exists
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -134,7 +134,7 @@ def build_colab_readiness_report(
     gp4_ws_allowed = is_allowed_cloud_path(gp4_ws, gp4_ws_policy)
     gp4_ws_branch = git_value(gp4_ws, "branch", "--show-current") if gp4_ws_exists else ""
     gp4_ws_head = git_value(gp4_ws, "rev-parse", "HEAD") if gp4_ws_exists else ""
-    gp4_ws_dirty = bool(git_value(gp4_ws, "status", "--short")) if gp4_ws_exists else False
+    gp4_ws_dirty = git_has_real_changes(gp4_ws) if gp4_ws_exists else False
 
     checks = [
         _check(
