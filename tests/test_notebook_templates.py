@@ -107,6 +107,22 @@ def test_colab_notebook_locks_drive_account_and_reuses_previous_accepted_dataset
     assert "--previous-adapter" in orchestrator_source
 
 
+def test_colab_notebook_explains_drive_mount_consent_failure() -> None:
+    notebook = json.loads(
+        (ROOT / "notebooks/colab_gp4_react_qwen25_qlora.ipynb").read_text(
+            encoding="utf-8"
+        )
+    )
+    setup_source = "".join(notebook["cells"][1]["source"])
+
+    assert "def mount_google_drive_or_explain():" in setup_source
+    assert "drive.mount('/content/drive')" in setup_source
+    assert "except ValueError as exc:" in setup_source
+    assert "Approve the Google Drive permission prompt" in setup_source
+    assert "rerun this setup cell" in setup_source
+    assert "mount_google_drive_or_explain()" in setup_source
+
+
 def test_colab_notebook_requests_gpu_runtime() -> None:
     notebook = json.loads(
         (ROOT / "notebooks/colab_gp4_react_qwen25_qlora.ipynb").read_text(

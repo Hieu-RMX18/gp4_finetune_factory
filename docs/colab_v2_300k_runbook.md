@@ -12,6 +12,9 @@ Use this checkpoint when resuming the v2 300k fine-tune from Colab. Do not run t
 - `gp4_ws` branch: `ws-deep-rebuild-3526`
 - `GP4_WS_EXPECTED_COMMIT=3bbcb0726a4c3305c086c93e2b1e4a320471090b`
 
+If `drive.mount('/content/drive')` opens a Google Drive permission tab and the
+setup cell reports `Google Drive mount failed`, stop at that prompt. Approve the Google Drive permission prompt, return to the notebook, and rerun the first setup cell.
+
 ## Reuse Inputs
 
 Set `GP4_PREVIOUS_RUN_ID`, or set explicit Drive paths before running the

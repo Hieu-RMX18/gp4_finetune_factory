@@ -131,6 +131,8 @@ def test_colab_v2_300k_runbook_pins_drive_reuse_and_reports() -> None:
     assert "completion_audit_${RUN_ID}.json" in text
     assert "<label>_failure_${RUN_ID}.json" in text
     assert "stdout/stderr tails" in text
+    assert "Approve the Google Drive permission prompt" in text
+    assert "rerun the first setup cell" in text
     assert "Do not run training locally" in text
     assert "does not perform a local adapter install" in text
 
