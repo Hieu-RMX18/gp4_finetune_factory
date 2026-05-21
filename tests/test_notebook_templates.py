@@ -25,6 +25,9 @@ def test_colab_notebook_can_clone_pushed_branch_without_source_bundle() -> None:
     assert "Source bundle must include source_revision.json with factory_source_commit" in setup_source
     assert "Factory source commit mismatch" in setup_source
     assert "factory_source_revision.json" in setup_source
+    assert "NOTEBOOK_SOURCE_PATH = WORK_DIR / 'notebooks/colab_gp4_react_qwen25_qlora.ipynb'" in setup_source
+    assert "NOTEBOOK_DRIVE_COPY = NOTEBOOK_DRIVE_DIR / 'colab_gp4_react_qwen25_qlora.ipynb'" in setup_source
+    assert "colab_notebook_copy.json" in setup_source
     assert "if Path(SOURCE_BUNDLE).exists()" in setup_source
     assert "os.chdir('/content')" in setup_source
     assert "GP4_WS_REPO_URL = os.environ.get('GP4_WS_REPO_URL'" in setup_source

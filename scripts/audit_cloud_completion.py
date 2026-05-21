@@ -285,6 +285,13 @@ def audit_completion(
             str(manifest_path),
         ),
         _check(
+            "colab_notebook_drive_copy_verified",
+            _colab_notebook_copy_verified(cloud_root, policy),
+            "Colab notebook source must be copied under CLOUD_ROOT/notebooks "
+            "with a manifest",
+            str(cloud_root / "manifests/colab_notebook_copy.json"),
+        ),
+        _check(
             "drive_account_hint_verified",
             _drive_account_hint_verified(cloud_root, policy),
             "cloud run must record the expected Google Drive account hint",
@@ -734,6 +741,23 @@ def _source_plan_cloud_copy_verified(
     if not is_allowed_cloud_path(source_plan_path, policy) or not source_plan_path.exists():
         return False
     return sha256_file(source_plan_path) == str(expected_sha)
+
+
+def _colab_notebook_copy_verified(
+    cloud_root: Path,
+    policy: CloudStoragePolicy,
+) -> bool:
+    manifest_path = cloud_root / "manifests/colab_notebook_copy.json"
+    if not _cloud_file_exists(manifest_path, policy):
+        return False
+    manifest = _read_optional_json(manifest_path)
+    notebook_path = Path(str(manifest.get("notebook_drive_copy") or ""))
+    expected_path = cloud_root / "notebooks/colab_gp4_react_qwen25_qlora.ipynb"
+    return (
+        _same_path(notebook_path, expected_path)
+        and _cloud_file_exists(notebook_path, policy)
+        and bool(str(manifest.get("factory_source_commit") or "").strip())
+    )
 
 
 def _drive_account_hint_verified(

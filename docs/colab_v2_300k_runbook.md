@@ -48,6 +48,10 @@ After Run All, keep these files under `$CLOUD_ROOT/reports/`:
 - `benchmark-report_${RUN_ID}.json`
 - `completion_audit_${RUN_ID}.json`
 
+The executed notebook source is also copied to
+`$CLOUD_ROOT/notebooks/colab_gp4_react_qwen25_qlora.ipynb`, with copy metadata in
+`$CLOUD_ROOT/manifests/colab_notebook_copy.json`.
+
 The benchmark reports must include Benchmark Columns, Actual vs Threshold,
 Acceptance Gate Status, V2 Quota Failures, Scenario Tag Distribution,
 Provenance, and Maintenance Reference sections. The completion audit must pass
