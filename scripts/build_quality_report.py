@@ -539,7 +539,10 @@ def _gp4_ws_rows(source: str, report: dict[str, Any]) -> list[dict[str, Any]]:
 def _old_dataset_reuse_rows(source: str, report: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     if "old_dataset_count" in report:
-        rows.append(_row(source, "old_dataset_count", _int_value(report.get("old_dataset_count")), ">=", 1))
+        minimum = 0 if report.get("adapter_only_reuse") is True else 1
+        rows.append(_row(source, "old_dataset_count", _int_value(report.get("old_dataset_count")), ">=", minimum))
+    if "adapter_only_reuse" in report:
+        rows.append(_row(source, "adapter_only_reuse", report.get("adapter_only_reuse"), "is", True))
     if "old_rows_valid" in report:
         rows.append(_row(source, "old_rows_valid", _int_value(report.get("old_rows_valid")), ">=", 1))
     if "new_rows_requested" in report:

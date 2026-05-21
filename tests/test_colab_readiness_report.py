@@ -139,6 +139,59 @@ def test_colab_readiness_report_passes_for_previous_adapter_under_drive(
     assert report["previous_run"]["matched"] is True
 
 
+def test_colab_readiness_report_passes_for_adapter_only_previous_reuse(
+    tmp_path: Path,
+) -> None:
+    cloud_root, _old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = cloud_root.parent / "previous/models/qwen25_gp4_lora/checkpoint-100"
+    _adapter(previous_adapter)
+
+    report = build_colab_readiness_report(
+        cloud_root=cloud_root,
+        run_id="run",
+        gp4_ws=gp4_ws,
+        old_dataset=None,
+        previous_adapter=previous_adapter,
+        expected_commit=expected_commit,
+        allow_adapter_only_reuse=True,
+        policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
+    )
+
+    assert report["passed"] is True
+    assert report["old_dataset"]["adapter_only_reuse"] is True
+    assert report["old_dataset"]["rows"] == 0
+    assert report["previous_adapter"]["artifact_exists"] is True
+    assert report["previous_run"]["previous_adapter_run_id"] == "previous"
+    assert report["previous_run"]["adapter_only_reuse"] is True
+    assert report["previous_run"]["matched"] is True
+
+
+def test_colab_readiness_report_rejects_adapter_only_current_run_reuse(
+    tmp_path: Path,
+) -> None:
+    cloud_root, _old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = cloud_root / "models/qwen25_gp4_lora/checkpoint-100"
+    _adapter(previous_adapter)
+
+    report = build_colab_readiness_report(
+        cloud_root=cloud_root,
+        run_id="run",
+        gp4_ws=gp4_ws,
+        old_dataset=None,
+        previous_adapter=previous_adapter,
+        expected_commit=expected_commit,
+        allow_adapter_only_reuse=True,
+        policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
+    )
+
+    assert report["passed"] is False
+    assert report["previous_run"]["previous_adapter_run_id"] == "run"
+    assert report["previous_run"]["adapter_only_reuse"] is True
+    assert report["previous_run"]["matched"] is False
+    failed = {check["id"] for check in report["checks"] if not check["passed"]}
+    assert "previous_reuse_same_prior_run" in failed
+
+
 def test_colab_readiness_report_rejects_missing_previous_adapter(
     tmp_path: Path,
 ) -> None:

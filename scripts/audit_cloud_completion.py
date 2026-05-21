@@ -811,17 +811,34 @@ def _colab_readiness_verified(
     previous_adapter_path = Path(str(previous_adapter.get("path") or ""))
     old_dataset_run_id = str(previous_run.get("old_dataset_run_id") or "")
     previous_adapter_run_id = str(previous_run.get("previous_adapter_run_id") or "")
+    adapter_only_reuse = (
+        old_dataset.get("adapter_only_reuse") is True
+        and previous_run.get("adapter_only_reuse") is True
+    )
     gp4_ws_path = Path(str(gp4_ws.get("path") or ""))
+    old_dataset_verified = (
+        (
+            old_dataset.get("exists") is True
+            and old_dataset.get("allowed_cloud_path") is True
+            and _int_value(old_dataset.get("rows")) > 0
+            and _cloud_file_exists(old_dataset_path, old_dataset_policy)
+            and bool(old_dataset_run_id)
+            and old_dataset_run_id == previous_adapter_run_id
+        )
+        or (
+            adapter_only_reuse
+            and old_dataset.get("exists") is False
+            and not old_dataset_run_id
+            and bool(previous_adapter_run_id)
+        )
+    )
     return (
         report.get("passed") is True
         and drive_account.get("matches_expected") is True
         and drive_account.get("email") == EXPECTED_DRIVE_ACCOUNT_EMAIL
         and drive_account.get("confirmed") is True
         and drive_account.get("confirmed_email") == EXPECTED_DRIVE_ACCOUNT_EMAIL
-        and old_dataset.get("exists") is True
-        and old_dataset.get("allowed_cloud_path") is True
-        and _int_value(old_dataset.get("rows")) > 0
-        and _cloud_file_exists(old_dataset_path, old_dataset_policy)
+        and old_dataset_verified
         and previous_adapter.get("exists") is True
         and previous_adapter.get("allowed_cloud_path") is True
         and previous_adapter.get("artifact_exists") is True
@@ -829,9 +846,7 @@ def _colab_readiness_verified(
         and previous_adapter_path.exists()
         and adapter_artifact_exists(previous_adapter_path)
         and previous_run.get("matched") is True
-        and bool(old_dataset_run_id)
-        and old_dataset_run_id == previous_adapter_run_id
-        and old_dataset_run_id != run_id
+        and previous_adapter_run_id != run_id
         and gp4_ws.get("exists") is True
         and gp4_ws.get("allowed_cloud_path") is True
         and is_allowed_cloud_path(gp4_ws_path, gp4_ws_policy)
@@ -993,6 +1008,19 @@ def _old_dataset_reuse_verified(
     assert plan_report is not None
     assert merge_report is not None
     fingerprints = import_report.get("old_dataset_fingerprints", [])
+    target_rows = _int_value(plan_report.get("target_rows"))
+    if import_report.get("adapter_only_reuse") is True:
+        return (
+            not fingerprints
+            and _int_value(import_report.get("old_dataset_count")) == 0
+            and _int_value(validate_report.get("old_rows_valid")) == 0
+            and target_rows >= 300000
+            and _int_value(plan_report.get("new_rows_requested")) == target_rows
+            and _int_value(merge_report.get("old_rows_input")) == 0
+            and _int_value(merge_report.get("old_rows_kept")) == 0
+            and _int_value(merge_report.get("new_rows_kept")) >= 300000
+            and _cloud_file_exists(cloud_root / "data/validated/accepted_300k.jsonl", policy)
+        )
     if not isinstance(fingerprints, list) or not fingerprints:
         return False
     for fingerprint in fingerprints:
@@ -1010,7 +1038,6 @@ def _old_dataset_reuse_verified(
         if _int_value(fingerprint.get("rows")) <= 0:
             return False
     old_validated_path = Path(str(validate_report.get("old_validated_merged_path") or ""))
-    target_rows = _int_value(plan_report.get("target_rows"))
     return (
         _int_value(import_report.get("old_dataset_count")) > 0
         and _int_value(validate_report.get("old_rows_valid")) > 0

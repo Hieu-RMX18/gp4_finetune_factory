@@ -14,10 +14,18 @@ Use this checkpoint when resuming the v2 300k fine-tune from Colab. Do not run t
 
 ## Reuse Inputs
 
-Set either `GP4_PREVIOUS_RUN_ID` or both explicit paths before running the notebook.
+Set `GP4_PREVIOUS_RUN_ID`, or set explicit Drive paths before running the
+notebook. The normal reuse path uses both
+`GP4_OLD_DATASET=<previous_run>/data/validated/accepted_300k.jsonl` and
+`GP4_PREVIOUS_ADAPTER=<previous_run>/models/qwen25_gp4_lora`. If no old dataset
+is available, adapter-only reuse is allowed when `GP4_PREVIOUS_ADAPTER` points
+at a prior Drive adapter; that mode generates the full 300k accepted-row target from new rows and keeps `old_rows_kept=0`.
+
 If all three reuse inputs are unset, the Colab notebook scans the Drive root
-and selects the newest folder that contains both
-`data/validated/accepted_300k.jsonl` and `models/qwen25_gp4_lora`.
+for the newest prior accepted dataset and the newest prior adapter. It can
+select the newest adapter checkpoint under
+`models/qwen25_gp4_lora/checkpoint-*` when the root adapter folder does not yet
+contain final adapter weights.
 
 ```bash
 export GP4_DRIVE_ROOT=/content/drive/MyDrive/gp4_finetune_factory

@@ -95,6 +95,19 @@ def write_cloud_setup_evidence(cloud_root: Path, run_id: str) -> None:
         },
     )
 
+def write_colab_notebook_copy_evidence(cloud_root: Path, run_id: str) -> None:
+    notebook_copy = cloud_root / "notebooks/colab_gp4_react_qwen25_qlora.ipynb"
+    notebook_copy.parent.mkdir(parents=True, exist_ok=True)
+    notebook_copy.write_text('{"cells":[]}\n', encoding="utf-8")
+    write_json(
+        cloud_root / "manifests/colab_notebook_copy.json",
+        {
+            "notebook_drive_copy": str(notebook_copy),
+            "source_path": "/content/gp4_finetune_factory_source/notebooks/colab_gp4_react_qwen25_qlora.ipynb",
+            "factory_source_commit": "abc1234def56",
+        },
+    )
+
 def write_colab_readiness_evidence(cloud_root: Path, run_id: str) -> None:
     gp4_ws_path = cloud_root / "contract_snapshots/gp4_ws_ws-deep-rebuild-3526"
     gp4_ws_path.mkdir(parents=True, exist_ok=True)
@@ -358,6 +371,50 @@ def write_data_prep_evidence(cloud_root: Path, run_id: str) -> None:
             "validation": 300,
             "test": 300,
             "locked_eval_contamination": 0,
+        },
+    )
+
+def write_adapter_only_data_prep_evidence(cloud_root: Path, run_id: str) -> None:
+    write_data_prep_evidence(cloud_root, run_id)
+    write_json(
+        cloud_root / "reports" / f"import-old_{run_id}.json",
+        {
+            "passed": True,
+            "old_datasets": [],
+            "old_dataset_count": 0,
+            "old_dataset_fingerprints": [],
+            "adapter_only_reuse": True,
+        },
+    )
+    write_json(
+        cloud_root / "reports" / f"validate-old-v2_{run_id}.json",
+        {
+            "passed": True,
+            "old_rows_valid": 0,
+            "old_validated_paths": [],
+            "adapter_only_reuse": True,
+        },
+    )
+    write_json(
+        cloud_root / "reports" / f"plan-v2-target_{run_id}.json",
+        {
+            "passed": True,
+            "target_rows": 300000,
+            "old_rows_valid": 0,
+            "new_rows_requested": 300000,
+        },
+    )
+    write_json(
+        cloud_root / "reports" / f"merge-accepted_{run_id}.json",
+        {
+            "passed": True,
+            "target_rows": 300000,
+            "output_rows": 300000,
+            "old_rows_input": 0,
+            "new_rows_input": 300000,
+            "old_rows_kept": 0,
+            "new_rows_kept": 300000,
+            "dropped_duplicates": 0,
         },
     )
 
@@ -721,6 +778,7 @@ def write_complete_cloud_evidence(
     (adapter_dir / "adapter_config.json").write_text("{}\n", encoding="utf-8")
     (adapter_dir / "adapter_model.safetensors").write_text("weights\n", encoding="utf-8")
     write_cloud_setup_evidence(cloud_root, run_id)
+    write_colab_notebook_copy_evidence(cloud_root, run_id)
     write_colab_readiness_evidence(cloud_root, run_id)
     write_data_prep_evidence(cloud_root, run_id)
     write_train_infer_evidence(cloud_root, run_id)
@@ -786,6 +844,7 @@ def test_cloud_completion_audit_passes_for_complete_cloud_run(
         encoding="utf-8",
     )
     write_cloud_setup_evidence(cloud_root, run_id)
+    write_colab_notebook_copy_evidence(cloud_root, run_id)
     write_colab_readiness_evidence(cloud_root, run_id)
     write_data_prep_evidence(cloud_root, run_id)
     write_train_infer_evidence(cloud_root, run_id)
@@ -880,6 +939,42 @@ def test_cloud_completion_audit_accepts_previous_run_dataset_sibling_drive_root(
     failed = {item["id"] for item in payload["checklist"] if not item["passed"]}
     assert "old_dataset_reuse_verified" not in failed
 
+
+def test_cloud_completion_audit_accepts_adapter_only_previous_reuse(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "adapter-only"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    write_adapter_only_data_prep_evidence(cloud_root, run_id)
+    readiness_path = cloud_root / "reports" / f"colab_readiness_{run_id}.json"
+    readiness = json.loads(readiness_path.read_text(encoding="utf-8"))
+    readiness["old_dataset"] = {
+        "path": "",
+        "exists": False,
+        "allowed_cloud_path": False,
+        "rows": 0,
+        "sha256": "",
+        "adapter_only_reuse": True,
+    }
+    readiness["previous_run"]["old_dataset_run_id"] = ""
+    readiness["previous_run"]["adapter_only_reuse"] = True
+    readiness_path.write_text(
+        json.dumps(readiness, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in payload["checklist"] if not item["passed"]}
+    assert "colab_readiness_verified" not in failed
+    assert "old_dataset_reuse_verified" not in failed
 
 def test_cloud_completion_audit_rejects_missing_gp4_ws_snapshot_path(
     tmp_path: Path,
@@ -1941,6 +2036,29 @@ def test_cloud_completion_audit_rejects_missing_source_plan_copy(
 
     failed = {item["id"] for item in payload["checklist"] if not item["passed"]}
     assert "source_plan_cloud_copy_verified" in failed
+
+def test_cloud_completion_audit_rejects_missing_notebook_drive_copy(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "missing-notebook-copy"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    for path in [
+        cloud_root / "manifests/colab_notebook_copy.json",
+        cloud_root / "notebooks/colab_gp4_react_qwen25_qlora.ipynb",
+    ]:
+        path.unlink(missing_ok=True)
+
+    payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in payload["checklist"] if not item["passed"]}
+    assert "colab_notebook_drive_copy_verified" in failed
 
 def test_cloud_completion_audit_rejects_package_without_acceptance_reference(
     tmp_path: Path,

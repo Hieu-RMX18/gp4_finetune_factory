@@ -29,10 +29,11 @@ def main() -> int:
     parser.add_argument("--cloud-root", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--gp4-ws", type=Path, required=True)
-    parser.add_argument("--old-dataset", type=Path, required=True)
+    parser.add_argument("--old-dataset", type=Path)
     parser.add_argument("--previous-adapter", type=Path, required=True)
     parser.add_argument("--expected-commit")
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--allow-adapter-only-reuse", action="store_true")
     parser.add_argument("--allow-tmp", action="store_true")
     args = parser.parse_args()
 
@@ -60,6 +61,7 @@ def main() -> int:
         old_dataset=args.old_dataset,
         previous_adapter=args.previous_adapter,
         expected_commit=args.expected_commit,
+        allow_adapter_only_reuse=args.allow_adapter_only_reuse,
         policy=policy,
         report=report_path,
     )
@@ -73,9 +75,10 @@ def build_colab_readiness_report(
     cloud_root: Path,
     run_id: str,
     gp4_ws: Path,
-    old_dataset: Path,
+    old_dataset: Path | None = None,
     previous_adapter: Path | None = None,
     expected_commit: str | None = None,
+    allow_adapter_only_reuse: bool = False,
     policy: CloudStoragePolicy,
     report: Path | None = None,
 ) -> dict[str, Any]:
@@ -99,7 +102,8 @@ def build_colab_readiness_report(
         and str(drive_confirmation.get("expected_email") or "").strip()
         == EXPECTED_DRIVE_ACCOUNT_EMAIL
     )
-    old_dataset_exists = old_dataset.is_file()
+    adapter_only_reuse = allow_adapter_only_reuse and old_dataset is None
+    old_dataset_exists = old_dataset.is_file() if old_dataset is not None else False
     old_dataset_rows = _jsonl_rows(old_dataset) if old_dataset_exists else 0
     old_dataset_sha = sha256_file(old_dataset) if old_dataset_exists else ""
     gp4_ws_policy = CloudStoragePolicy(
@@ -124,6 +128,7 @@ def build_colab_readiness_report(
         run_id=run_id,
         old_dataset=old_dataset,
         previous_adapter=previous_adapter,
+        allow_adapter_only_reuse=allow_adapter_only_reuse,
     )
     gp4_ws_exists = gp4_ws.exists()
     gp4_ws_allowed = is_allowed_cloud_path(gp4_ws, gp4_ws_policy)
@@ -147,13 +152,22 @@ def build_colab_readiness_report(
             drive_account_confirmed,
             str(drive_confirmation_path),
         ),
-        _check("old_dataset_exists", old_dataset_exists, str(old_dataset)),
+        _check(
+            "old_dataset_exists",
+            old_dataset_exists or adapter_only_reuse,
+            str(old_dataset or "<adapter-only-reuse>"),
+        ),
         _check(
             "old_dataset_allowed_cloud_path",
-            is_allowed_cloud_path(old_dataset, policy),
-            str(old_dataset),
+            (old_dataset is not None and is_allowed_cloud_path(old_dataset, policy))
+            or adapter_only_reuse,
+            str(old_dataset or "<adapter-only-reuse>"),
         ),
-        _check("old_dataset_has_rows", old_dataset_rows > 0, str(old_dataset)),
+        _check(
+            "old_dataset_has_rows",
+            old_dataset_rows > 0 or adapter_only_reuse,
+            str(old_dataset or "<adapter-only-reuse>"),
+        ),
         _check(
             "previous_adapter_required",
             previous_adapter is not None,
@@ -219,11 +233,16 @@ def build_colab_readiness_report(
             ),
         },
         "old_dataset": {
-            "path": str(old_dataset),
+            "path": str(old_dataset) if old_dataset is not None else "",
             "exists": old_dataset_exists,
-            "allowed_cloud_path": is_allowed_cloud_path(old_dataset, policy),
+            "allowed_cloud_path": (
+                is_allowed_cloud_path(old_dataset, policy)
+                if old_dataset is not None
+                else False
+            ),
             "rows": old_dataset_rows,
             "sha256": old_dataset_sha,
+            "adapter_only_reuse": adapter_only_reuse,
         },
         "previous_adapter": {
             "path": str(previous_adapter) if previous_adapter is not None else "",
@@ -252,8 +271,9 @@ def _previous_run_reuse_state(
     *,
     cloud_root: Path,
     run_id: str,
-    old_dataset: Path,
+    old_dataset: Path | None,
     previous_adapter: Path | None,
+    allow_adapter_only_reuse: bool,
 ) -> dict[str, Any]:
     drive_root = cloud_root.parent
     old_dataset_run_id = _previous_run_id_from_path(
@@ -262,20 +282,27 @@ def _previous_run_reuse_state(
         suffix=Path("data/validated/accepted_300k.jsonl"),
     )
     previous_adapter_run_id = (
-        _previous_run_id_from_path(
+        _previous_adapter_run_id_from_path(
             path=previous_adapter,
             drive_root=drive_root,
-            suffix=Path("models/qwen25_gp4_lora"),
         )
         if previous_adapter is not None
         else ""
     )
-    same_source_run = (
-        bool(old_dataset_run_id)
+    adapter_only_reuse = (
+        allow_adapter_only_reuse
+        and not old_dataset_run_id
         and bool(previous_adapter_run_id)
-        and old_dataset_run_id == previous_adapter_run_id
     )
-    is_prior_run = same_source_run and old_dataset_run_id != run_id
+    same_source_run = (
+        bool(previous_adapter_run_id)
+        and (
+            (bool(old_dataset_run_id) and old_dataset_run_id == previous_adapter_run_id)
+            or adapter_only_reuse
+        )
+    )
+    source_run_id = previous_adapter_run_id if adapter_only_reuse else old_dataset_run_id
+    is_prior_run = same_source_run and source_run_id != run_id
     matched = same_source_run and is_prior_run
     details = (
         f"old_dataset_run_id={old_dataset_run_id or '<unknown>'} "
@@ -286,6 +313,7 @@ def _previous_run_reuse_state(
         "drive_root": str(drive_root),
         "old_dataset_run_id": old_dataset_run_id,
         "previous_adapter_run_id": previous_adapter_run_id,
+        "adapter_only_reuse": adapter_only_reuse,
         "same_source_run": same_source_run,
         "is_prior_run": is_prior_run,
         "matched": matched,
@@ -313,6 +341,27 @@ def _previous_run_id_from_path(
     if relative.parts[1:] != suffix_parts:
         return ""
     return relative.parts[0]
+
+def _previous_adapter_run_id_from_path(
+    *,
+    path: Path | None,
+    drive_root: Path,
+) -> str:
+    if path is None:
+        return ""
+    try:
+        relative = path.resolve(strict=False).relative_to(
+            drive_root.resolve(strict=False)
+        )
+    except ValueError:
+        return ""
+    parts = relative.parts
+    if len(parts) < 3:
+        return ""
+    for index in range(1, len(parts) - 1):
+        if parts[index : index + 2] == ("models", "qwen25_gp4_lora"):
+            return parts[0]
+    return ""
 
 
 def _configured_expected_commit(raw_value: str | None, *, env_name: str) -> str:

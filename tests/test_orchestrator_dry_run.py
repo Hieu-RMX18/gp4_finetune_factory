@@ -151,7 +151,44 @@ def test_cloud_import_old_blocks_without_prior_accepted_dataset(tmp_path: Path) 
     report = json.loads(Path(result["report"]).read_text(encoding="utf-8"))
     assert report["passed"] is False
     assert report["old_dataset_count"] == 0
-    assert report["blocked_reason"] == "v2 300k run requires a previous accepted dataset"
+    assert report["adapter_only_reuse"] is False
+    assert (
+        report["blocked_reason"]
+        == "v2 300k run requires a previous accepted dataset or previous adapter"
+    )
+
+def test_cloud_import_old_allows_adapter_only_reuse_with_previous_adapter(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    reports_dir = cloud_root / "reports"
+    reports_dir.mkdir(parents=True)
+    previous_adapter = cloud_root.parent / "previous/models/qwen25_gp4_lora"
+    previous_adapter.mkdir(parents=True)
+
+    result = _run_cloud_phase(
+        "import-old",
+        {
+            "run_id": "adapter-only",
+            "cloud_root": cloud_root,
+            "reports_dir": reports_dir,
+            "seed": Path("data/seed/gp4_seed_starter.jsonl"),
+            "policy": CloudStoragePolicy((cloud_root,), allow_tmp=True),
+            "provider": None,
+            "source_plan": None,
+            "dry_run": False,
+            "allow_tmp": True,
+            "old_datasets": [],
+            "previous_adapter": previous_adapter,
+        },
+    )
+
+    assert result["status"] == "passed"
+    report = json.loads(Path(result["report"]).read_text(encoding="utf-8"))
+    assert report["passed"] is True
+    assert report["old_dataset_count"] == 0
+    assert report["adapter_only_reuse"] is True
+    assert report["blocked_reason"] == ""
 
 
 def test_v2_split_reads_accepted_300k_dataset(

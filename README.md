@@ -62,7 +62,7 @@ python3 scripts/colab_readiness_report.py \
   --report "$CLOUD_ROOT/reports/colab_readiness_$RUN_ID.json"
 ```
 
-Then run the cloud workflow with the previous accepted dataset:
+Then run the cloud workflow with the previous accepted dataset and adapter:
 
 ```bash
 python3 scripts/cloud_orchestrator.py \
@@ -76,6 +76,10 @@ python3 scripts/cloud_orchestrator.py \
   --previous-adapter "$GP4_PREVIOUS_ADAPTER"
 ```
 
+For adapter-only reuse, omit `--old-dataset` and keep
+`--previous-adapter "$GP4_PREVIOUS_ADAPTER"` pointed at a prior Drive adapter.
+That mode does not import old rows; use it to generate the full 300k accepted-row target from new rows while resuming training from the prior adapter.
+
 In Colab, use the Google Drive account `johnwickiller4444@gmail.com` and keep
 `GP4_DRIVE_ROOT=/content/drive/MyDrive/gp4_finetune_factory` unless the Drive
 folder is intentionally moved. The notebook writes a Drive account hint and
@@ -87,6 +91,10 @@ the prior `data/validated/accepted_300k.jsonl` file under Google Drive before
 running the notebook. Set `GP4_PREVIOUS_ADAPTER` to the prior
 `models/qwen25_gp4_lora` folder under Google Drive, or let the notebook resolve
 it from `GP4_PREVIOUS_RUN_ID`.
+If Drive has a previous adapter but no usable previous accepted dataset, the
+notebook uses adapter-only reuse and passes `--allow-adapter-only-reuse` to the
+readiness report; the orchestrator then requests 300k new rows and keeps
+`old_rows_kept=0`.
 
 The Colab notebook also prepares a read-only `gp4_ws` contract snapshot at
 `$CLOUD_ROOT/contract_snapshots/gp4_ws_ws-deep-rebuild-3526`; any pre-set
