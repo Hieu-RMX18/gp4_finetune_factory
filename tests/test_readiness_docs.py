@@ -46,6 +46,8 @@ def test_readme_documents_v2_300k_workflow_and_local_readiness() -> None:
     assert "GP4_WS_EXPECTED_COMMIT" in text
     assert "must be set before the notebook clones or reuses `GP4_WS`" in text
     assert "--old-dataset \"$GP4_OLD_DATASET\"" in text
+    assert "--previous-adapter \"$GP4_PREVIOUS_ADAPTER\"" in text
+    assert "GP4_PREVIOUS_ADAPTER" in text
     assert "python3 scripts/colab_readiness_report.py" in text
     assert (
         "robot execution remains behind validation, safety, planning, "
@@ -70,3 +72,21 @@ def test_local_install_readiness_doc_exists() -> None:
     assert "drive_account_matches" in text
     assert "old_rows_kept" in text
     assert "adapter_aggregate_sha256" in text
+
+def test_colab_v2_300k_runbook_pins_drive_reuse_and_reports() -> None:
+    text = (ROOT / "docs/colab_v2_300k_runbook.md").read_text(encoding="utf-8")
+
+    assert "johnwickiller4444@gmail.com" in text
+    assert "/content/drive/MyDrive/gp4_finetune_factory" in text
+    assert "GP4_PREVIOUS_RUN_ID" in text
+    assert "GP4_PREVIOUS_ADAPTER" in text
+    assert "models/qwen25_gp4_lora" in text
+    assert "GP4_OLD_DATASET" in text
+    assert "accepted_300k.jsonl" in text
+    assert "GP4_WS_EXPECTED_COMMIT" in text
+    assert "ws-deep-rebuild-3526" in text
+    assert "3bbcb0726a4c3305c086c93e2b1e4a320471090b" in text
+    assert "benchmark_report_${RUN_ID}.html" in text
+    assert "benchmark_report_${RUN_ID}.md" in text
+    assert "completion_audit_${RUN_ID}.json" in text
+    assert "Do not run training locally" in text

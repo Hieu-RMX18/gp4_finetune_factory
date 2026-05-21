@@ -71,7 +71,8 @@ python3 scripts/cloud_orchestrator.py \
   --source-plan docs/superpowers/plans/2026-05-20-gp4-v2-300k-readiness.md \
   --phases ignored \
   --preset v2-300k \
-  --old-dataset "$GP4_OLD_DATASET"
+  --old-dataset "$GP4_OLD_DATASET" \
+  --previous-adapter "$GP4_PREVIOUS_ADAPTER"
 ```
 
 In Colab, use the Google Drive account `johnwickiller4444@gmail.com` and keep
@@ -82,7 +83,9 @@ requires an operator confirmation artifact for the same email; set
 the mounted Drive account. To reuse a previous accepted run, set
 `GP4_PREVIOUS_RUN_ID=<previous_run_id>` or point `GP4_OLD_DATASET` directly at
 the prior `data/validated/accepted_300k.jsonl` file under Google Drive before
-running the notebook.
+running the notebook. Set `GP4_PREVIOUS_ADAPTER` to the prior
+`models/qwen25_gp4_lora` folder under Google Drive, or let the notebook resolve
+it from `GP4_PREVIOUS_RUN_ID`.
 
 The Colab notebook also prepares a read-only `gp4_ws` contract snapshot at
 `$CLOUD_ROOT/contract_snapshots/gp4_ws_ws-deep-rebuild-3526`; any pre-set
