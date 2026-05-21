@@ -99,6 +99,11 @@ def test_colab_notebook_locks_drive_account_and_reuses_previous_accepted_dataset
     assert "models/qwen25_gp4_lora" in setup_source
     assert "def _adapter_candidates_for_run(previous_dir):" in setup_source
     assert "checkpoint-*" in setup_source
+    assert "if previous_dir.name == RUN_ID:" in setup_source
+    assert "continue" in setup_source
+    assert setup_source.index("if previous_dir.name == RUN_ID:") < setup_source.index(
+        "accepted_path = previous_dir / 'data/validated/accepted_300k.jsonl'"
+    )
     assert "previous_adapter_candidates.append((adapter_candidate.stat().st_mtime, previous_dir.name, str(adapter_candidate)))" in setup_source
     assert "<adapter-only reuse; generate full 300k>" in setup_source
     assert "GP4_PREVIOUS_ADAPTER or GP4_PREVIOUS_RUN_ID" in setup_source
