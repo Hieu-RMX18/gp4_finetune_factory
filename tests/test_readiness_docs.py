@@ -129,6 +129,8 @@ def test_colab_v2_300k_runbook_pins_drive_reuse_and_reports() -> None:
     assert "local-install-manifest_${RUN_ID}.json" in text
     assert "`local-install-manifest_${RUN_ID}.json` is a Drive-stored readiness artifact, not a local install action." in text
     assert "completion_audit_${RUN_ID}.json" in text
+    assert "<label>_failure_${RUN_ID}.json" in text
+    assert "stdout/stderr tails" in text
     assert "Do not run training locally" in text
     assert "does not perform a local adapter install" in text
 

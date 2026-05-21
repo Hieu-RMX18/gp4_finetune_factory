@@ -64,5 +64,7 @@ The benchmark reports must include Benchmark Columns, Actual vs Threshold,
 Acceptance Gate Status, V2 Quota Failures, Scenario Tag Distribution,
 Provenance, and Maintenance Reference sections. The completion audit must pass
 before any downstream install readiness claim is accepted.
+If a notebook subprocess fails, inspect `<label>_failure_${RUN_ID}.json` under
+`$CLOUD_ROOT/reports/`; it records the command, return code, and stdout/stderr tails.
 `local-install-manifest_${RUN_ID}.json` is a Drive-stored readiness artifact, not a local install action.
 This runbook produces cloud readiness evidence only and does not perform a local adapter install.

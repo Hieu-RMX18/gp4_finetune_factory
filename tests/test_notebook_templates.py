@@ -162,6 +162,31 @@ def test_colab_notebook_command_surface_excludes_dangerous_os_commands() -> None
             assert not line.lstrip().startswith("!")
 
 
+def test_colab_notebook_writes_failure_reports_for_subprocess_steps() -> None:
+    notebook = json.loads(
+        (ROOT / "notebooks/colab_gp4_react_qwen25_qlora.ipynb").read_text(
+            encoding="utf-8"
+        )
+    )
+    setup_source = "".join(notebook["cells"][1]["source"])
+    pip_source = "".join(notebook["cells"][3]["source"])
+    provider_source = "".join(notebook["cells"][4]["source"])
+    orchestrator_source = "".join(notebook["cells"][5]["source"])
+    audit_source = "".join(notebook["cells"][6]["source"])
+
+    assert "def run_checked(label, command):" in setup_source
+    assert "capture_output=True" in setup_source
+    assert "check=False" in setup_source
+    assert "stdout_tail" in setup_source
+    assert "stderr_tail" in setup_source
+    assert "failure_{RUN_ID}.json" in setup_source
+    assert "subprocess.CalledProcessError" in setup_source
+    assert "run_checked('pip-install'" in pip_source
+    assert "run_checked('provider-probe'" in provider_source
+    assert "run_checked('colab-readiness', readiness_command)" in orchestrator_source
+    assert "run_checked('cloud-orchestrator', orchestrator_command)" in orchestrator_source
+    assert "run_checked('completion-audit'" in audit_source
+
 def test_kaggle_react_notebook_is_disabled_in_drive_only_workflow() -> None:
     notebook = json.loads(
         (ROOT / "notebooks/kaggle_gp4_react_qwen25_qlora.ipynb").read_text(

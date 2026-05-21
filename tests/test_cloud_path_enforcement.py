@@ -53,7 +53,7 @@ def test_colab_react_cloud_notebook_uses_source_bundle_and_cloud_root() -> None:
         assert "gp4_finetune_factory_source_bundle.zip" in source
         assert "zipfile.ZipFile" in source
         assert "os.chdir(WORK_DIR)" in source
-        assert "subprocess.run(['python', '-m', 'pip', 'install', '-q', '-r', 'requirements-cloud.txt'], check=True)" in source
+        assert "run_checked('pip-install', ['python', '-m', 'pip', 'install', '-q', '-r', 'requirements-cloud.txt'])" in source
         assert "unsloth datasets trl" not in source
         assert "gp4-react-v2-300k-" in source
         assert "gp4-react-50k-" not in source
@@ -108,7 +108,7 @@ def test_colab_notebook_records_expected_drive_account_and_reuses_old_dataset() 
     assert "drive_account_confirmation.json" in source
     assert "GP4_DRIVE_ACCOUNT_CONFIRMED" in source
     assert "--old-dataset" in source
-    assert "subprocess.run(orchestrator_command, check=True)" in source
+    assert "run_checked('cloud-orchestrator', orchestrator_command)" in source
 
 
 def test_package_phase_report_path_matches_completion_audit(tmp_path: Path) -> None:
