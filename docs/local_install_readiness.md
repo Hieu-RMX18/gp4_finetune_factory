@@ -34,8 +34,8 @@ Required evidence:
   gp4_ws_expected_commit, and gp4_ws_expected_commit_matches.
 - The benchmark report Maintenance Reference keeps drive_account_confirmed,
   drive_account_matches, old_dataset_count, old_rows_kept, new_rows_requested,
-  previous_adapter_artifact_exists, previous_run_matched, and
-  adapter_aggregate_sha256.
+  raw_candidate_rows_requested, previous_adapter_artifact_exists,
+  previous_run_matched, and adapter_aggregate_sha256.
 
 The adapter may draft Semantic IR only. It does not replace command validation,
 safety checks, MoveIt planning, human approval, hardware mode gates, or MotoROS2

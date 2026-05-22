@@ -135,10 +135,11 @@ The benchmark report must keep provenance rows for `provider_policy_sha256`,
 `gp4_ws_expected_commit`, and `gp4_ws_expected_commit_matches`. Its
 Maintenance Reference must keep `drive_account_confirmed`,
 `drive_account_matches`, `old_dataset_count`, `old_rows_kept`,
-`new_rows_requested`, `previous_adapter_artifact_exists`,
+`new_rows_requested`, `raw_candidate_rows_requested`,
+`previous_adapter_artifact_exists`,
 `previous_run_matched`, and `adapter_aggregate_sha256` so later upgrade runs
-can compare Drive account continuity, old dataset reuse, previous adapter
-reuse, gp4_ws contract pinning, and adapter checksums.
+can compare Drive account continuity, old dataset reuse, raw candidate budget,
+previous adapter reuse, gp4_ws contract pinning, and adapter checksums.
 
 This repository does not install the adapter into the local robot workspace.
 The robot execution remains behind validation, safety, planning, approval, and hardware gates.

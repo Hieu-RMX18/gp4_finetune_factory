@@ -489,6 +489,78 @@ def test_v2_target_plan_accounts_for_unique_old_rows_and_quota_deficits() -> Non
     assert plan["new_rows_requested"] == 2
 
 
+def test_v2_target_plan_applies_raw_candidate_budget() -> None:
+    from cloud_orchestrator import _build_v2_target_plan
+
+    spec = {
+        "v2_merge_policy": {"target_total_accepted_rows": 4},
+        "v2_distribution_gates": {"scenario_tag_min_counts": {}},
+        "raw_candidate_budget": {"min_multiplier": 1.5, "max_multiplier": 2.0},
+    }
+
+    plan = _build_v2_target_plan(
+        [
+            {
+                "messages": [{"role": "user", "content": "covered row"}],
+                "expected_json": {"intent": "stop"},
+                "metadata": {"scenario_tags": ["normal_motion"]},
+            }
+        ],
+        spec,
+    )
+
+    assert plan["new_rows_requested"] == 3
+    assert plan["raw_candidate_budget_multiplier"] == 1.5
+    assert plan["raw_candidate_rows_requested"] == 5
+
+
+def test_generate_v2_uses_raw_candidate_request_count(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "generate-v2-raw-budget"
+    reports_dir = cloud_root / "reports"
+    reports_dir.mkdir(parents=True)
+    write_json(
+        reports_dir / f"plan-v2-target_{run_id}.json",
+        {
+            "passed": True,
+            "new_rows_requested": 280000,
+            "raw_candidate_rows_requested": 420000,
+        },
+    )
+    captured: dict[str, list[str]] = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = [str(part) for part in command]
+        report_path = Path(captured["command"][captured["command"].index("--report") + 1])
+        write_json(report_path, {"passed": True})
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("cloud_orchestrator.subprocess.run", fake_run)
+
+    result = _run_cloud_phase(
+        "generate-v2",
+        {
+            "run_id": run_id,
+            "cloud_root": cloud_root,
+            "reports_dir": reports_dir,
+            "seed": Path("data/seed/gp4_seed_starter.jsonl"),
+            "policy": CloudStoragePolicy((cloud_root,), allow_tmp=True),
+            "provider": None,
+            "source_plan": None,
+            "dry_run": False,
+            "allow_tmp": True,
+            "old_datasets": [],
+        },
+    )
+
+    assert result["status"] == "passed"
+    command = captured["command"]
+    assert command[command.index("--count") + 1] == "420000"
+
+
 def test_v2_target_plan_requests_rows_to_satisfy_legacy_cap() -> None:
     from cloud_orchestrator import _build_v2_target_plan
 

@@ -40,6 +40,7 @@ def test_readme_documents_v2_300k_workflow_and_local_readiness() -> None:
     assert "adapter_total_bytes" in text
     assert "drive_account_matches" in text
     assert "old_rows_kept" in text
+    assert "raw_candidate_rows_requested" in text
     assert "adapter-only reuse" in text
     assert "generate the full 300k accepted-row target from new rows" in text
     assert "adapter_aggregate_sha256" in text
@@ -96,6 +97,7 @@ def test_local_install_readiness_doc_exists() -> None:
     assert "adapter_total_bytes" in text
     assert "drive_account_matches" in text
     assert "old_rows_kept" in text
+    assert "raw_candidate_rows_requested" in text
     assert "adapter_aggregate_sha256" in text
     assert "previous_adapter_artifact_exists" in text
     assert "previous_run_matched" in text
@@ -126,6 +128,7 @@ def test_colab_v2_300k_runbook_pins_drive_reuse_and_reports() -> None:
     assert "benchmark_report_${RUN_ID}.md" in text
     assert "Actual vs Threshold" in text
     assert "Acceptance Gate Status" in text
+    assert "raw_candidate_rows_requested" in text
     assert "local-install-manifest_${RUN_ID}.json" in text
     assert "`local-install-manifest_${RUN_ID}.json` is a Drive-stored readiness artifact, not a local install action." in text
     assert "completion_audit_${RUN_ID}.json" in text

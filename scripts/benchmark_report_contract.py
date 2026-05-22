@@ -72,6 +72,7 @@ REQUIRED_MAINTENANCE_REFERENCE_TOKENS = (
     "old_dataset_count",
     "old_rows_kept",
     "new_rows_requested",
+    "raw_candidate_rows_requested",
     "previous_adapter_artifact_exists",
     "previous_run_matched",
     "adapter_aggregate_sha256",

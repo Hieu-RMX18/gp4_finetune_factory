@@ -445,6 +445,7 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
                 "target_rows": 300000,
                 "old_rows_valid": 20000,
                 "new_rows_requested": 280000,
+                "raw_candidate_rows_requested": 420000,
             }
         )
         + "\n",
@@ -717,6 +718,14 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
         "passed": True,
     } in report["benchmark_rows"]
     assert {
+        "source": str(plan_v2_report),
+        "metric": "raw_candidate_rows_requested",
+        "actual": 420000,
+        "operator": ">=",
+        "threshold": 280000,
+        "passed": True,
+    } in report["benchmark_rows"]
+    assert {
         "source": str(merge_report),
         "metric": "old_rows_kept",
         "actual": 20000,
@@ -762,6 +771,7 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     assert provenance["gp4_ws"]["expected_commit_matches"] is True
     assert provenance["old_dataset_reuse"]["old_dataset_count"] == 1
     assert provenance["old_dataset_reuse"]["old_rows_kept"] == 20000
+    assert provenance["old_dataset_reuse"]["raw_candidate_rows_requested"] == 420000
     assert provenance["old_dataset_reuse"]["old_dataset_fingerprints"][0]["sha256"] == (
         "old-dataset-sha"
     )
@@ -830,6 +840,7 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     assert "drive_account_matches" in html
     assert "drive_account_confirmed" in html
     assert "new_rows_requested" in html
+    assert "raw_candidate_rows_requested" in html
     markdown = markdown_report.read_text(encoding="utf-8")
     assert "# GP4 V2 Benchmark Report" in markdown
     assert "## V2 Quota Failures" in markdown
@@ -842,6 +853,7 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     assert "previous_run_matched" in maintenance_markdown
     assert "old_rows_kept" in maintenance_markdown
     assert "new_rows_requested" in maintenance_markdown
+    assert "raw_candidate_rows_requested" in maintenance_markdown
     assert "adapter_aggregate_sha256" in maintenance_markdown
     assert "unsafe_command_acceptance" in markdown
     assert "provider_cloud_storage_ready" in markdown
@@ -868,6 +880,7 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     assert "old_dataset_count: 1" in markdown
     assert "old_rows_kept: 20000" in markdown
     assert "new_rows_requested: 280000" in markdown
+    assert "raw_candidate_rows_requested: 420000" in markdown
     assert "adapter_total_bytes: 11" in markdown
     assert "provider_policy_sha256" in html
     assert "contract_manifest_sha256" in html

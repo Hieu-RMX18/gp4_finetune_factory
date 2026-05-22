@@ -69,7 +69,9 @@ The executed notebook source is also copied to
 The benchmark reports must include Benchmark Columns, Actual vs Threshold,
 Acceptance Gate Status, V2 Quota Failures, Scenario Tag Distribution,
 Provenance, and Maintenance Reference sections. The completion audit must pass
-before any downstream install readiness claim is accepted.
+before any downstream install readiness claim is accepted. The Maintenance
+Reference must include `raw_candidate_rows_requested` so future runs can compare
+the raw generation budget against the accepted-row target.
 If a notebook subprocess fails, inspect `<label>_failure_${RUN_ID}.json` under
 `$CLOUD_ROOT/reports/`; it records the command, return code, and stdout/stderr tails.
 `local-install-manifest_${RUN_ID}.json` is a Drive-stored readiness artifact, not a local install action.

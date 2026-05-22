@@ -487,7 +487,7 @@ def write_benchmark_report_evidence(cloud_root: Path, run_id: str) -> None:
         "</table>"
         "<h2>Maintenance Reference</h2><table>"
         "drive_account_confirmed drive_account_matches old_dataset_count old_rows_kept "
-        "new_rows_requested gp4_ws_branch gp4_ws_expected_commit "
+        "new_rows_requested raw_candidate_rows_requested gp4_ws_branch gp4_ws_expected_commit "
         "gp4_ws_expected_commit_matches previous_adapter_artifact_exists previous_run_matched "
         "adapter_aggregate_sha256"
         "</table>\n",
@@ -534,6 +534,7 @@ def write_benchmark_report_evidence(cloud_root: Path, run_id: str) -> None:
         "- old_dataset_count: 1\n"
         "- old_rows_kept: 20000\n"
         "- new_rows_requested: 280000\n"
+        "- raw_candidate_rows_requested: 420000\n"
         "- previous_adapter_artifact_exists: True\n"
         "- previous_run_matched: True\n"
         "- adapter_aggregate_sha256: adapter-aggregate-sha\n",
@@ -671,6 +672,14 @@ def write_benchmark_report_evidence(cloud_root: Path, run_id: str) -> None:
                     "actual": True,
                     "operator": "is",
                     "threshold": True,
+                    "passed": True,
+                },
+                {
+                    "source": "plan",
+                    "metric": "raw_candidate_rows_requested",
+                    "actual": 420000,
+                    "operator": ">=",
+                    "threshold": 280000,
                     "passed": True,
                 },
                 {

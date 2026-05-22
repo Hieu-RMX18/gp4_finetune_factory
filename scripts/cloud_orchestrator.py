@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import subprocess
 import sys
@@ -584,7 +585,10 @@ def _run_plan_v2_target_phase(phase: str, context: dict[str, Any]) -> dict[str, 
 def _run_generate_v2_phase(phase: str, context: dict[str, Any]) -> dict[str, Any]:
     cloud_root: Path = context["cloud_root"]
     plan = read_json(phase_report_path(cloud_root, str(context["run_id"]), "plan-v2-target"))
-    count = int(plan.get("new_rows_requested", 0))
+    count = int(
+        plan.get("raw_candidate_rows_requested")
+        or plan.get("new_rows_requested", 0)
+    )
     return _run_script_phase(
         phase,
         context,
@@ -638,6 +642,17 @@ def _build_v2_target_plan(
         nonlegacy_old_rows = max(0, len(unique_old_rows) - legacy_rows)
         old_rows_allowed_by_cap = nonlegacy_old_rows + min(legacy_rows, max_legacy_rows)
         legacy_cap_new_rows = max(0, target_rows - old_rows_allowed_by_cap)
+    new_rows_requested = max(
+        unique_row_shortfall,
+        quota_deficit_rows,
+        legacy_cap_new_rows,
+        quota_seed_rows,
+    )
+    raw_budget = spec.get("raw_candidate_budget", {})
+    raw_multiplier = 1.0
+    if isinstance(raw_budget, dict):
+        raw_multiplier = max(1.0, float(raw_budget.get("min_multiplier", 1.0)))
+    raw_candidate_rows_requested = int(math.ceil(new_rows_requested * raw_multiplier))
     return {
         "target_rows": target_rows,
         "old_rows_valid": len(old_rows),
@@ -647,12 +662,9 @@ def _build_v2_target_plan(
         "legacy_cap_new_rows": legacy_cap_new_rows,
         "quota_deficit_rows": quota_deficit_rows,
         "quota_seed_rows": quota_seed_rows,
-        "new_rows_requested": max(
-            unique_row_shortfall,
-            quota_deficit_rows,
-            legacy_cap_new_rows,
-            quota_seed_rows,
-        ),
+        "new_rows_requested": new_rows_requested,
+        "raw_candidate_budget_multiplier": raw_multiplier,
+        "raw_candidate_rows_requested": raw_candidate_rows_requested,
     }
 
 

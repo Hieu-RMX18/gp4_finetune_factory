@@ -336,6 +336,9 @@ def _old_dataset_reuse_provenance(reports: dict[str, Any]) -> dict[str, Any]:
         ),
         "target_rows": _int_value(plan_report.get("target_rows")),
         "new_rows_requested": _int_value(plan_report.get("new_rows_requested")),
+        "raw_candidate_rows_requested": _int_value(
+            plan_report.get("raw_candidate_rows_requested")
+        ),
         "old_rows_input": _int_value(merge_report.get("old_rows_input")),
         "new_rows_input": _int_value(merge_report.get("new_rows_input")),
         "old_rows_kept": _int_value(merge_report.get("old_rows_kept")),
@@ -570,6 +573,16 @@ def _old_dataset_reuse_rows(source: str, report: dict[str, Any]) -> list[dict[st
                 _int_value(report.get("new_rows_requested")),
                 "<=",
                 target_rows,
+            )
+        )
+    if "raw_candidate_rows_requested" in report:
+        rows.append(
+            _row(
+                source,
+                "raw_candidate_rows_requested",
+                _int_value(report.get("raw_candidate_rows_requested")),
+                ">=",
+                _int_value(report.get("new_rows_requested")),
             )
         )
     if "output_rows" in report:
@@ -1063,6 +1076,7 @@ def _markdown_provenance_lines(provenance: Any) -> list[str]:
         f"- old_rows_valid: {old_dataset_reuse.get('old_rows_valid', 0)}",
         f"- old_rows_kept: {old_dataset_reuse.get('old_rows_kept', 0)}",
         f"- new_rows_requested: {old_dataset_reuse.get('new_rows_requested', 0)}",
+        f"- raw_candidate_rows_requested: {old_dataset_reuse.get('raw_candidate_rows_requested', 0)}",
         f"- new_rows_kept: {old_dataset_reuse.get('new_rows_kept', 0)}",
         f"- previous_adapter_path: {previous_adapter_reuse.get('path', '')}",
         f"- previous_adapter_artifact_exists: {previous_adapter_reuse.get('artifact_exists', False)}",
@@ -1206,6 +1220,10 @@ def _maintenance_reference_rows(provenance: Any) -> list[dict[str, Any]]:
         {"key": "old_rows_valid", "value": old_dataset_reuse.get("old_rows_valid", 0)},
         {"key": "old_rows_kept", "value": old_dataset_reuse.get("old_rows_kept", 0)},
         {"key": "new_rows_requested", "value": old_dataset_reuse.get("new_rows_requested", 0)},
+        {
+            "key": "raw_candidate_rows_requested",
+            "value": old_dataset_reuse.get("raw_candidate_rows_requested", 0),
+        },
         {"key": "new_rows_kept", "value": old_dataset_reuse.get("new_rows_kept", 0)},
         {
             "key": "previous_adapter_path",
