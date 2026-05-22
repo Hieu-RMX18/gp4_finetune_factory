@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 from check_cloud_storage_policy import CloudStoragePolicy, is_allowed_cloud_path
 from cloud_runtime import CloudPathError, validate_cloud_run_paths
 from factory_common import read_jsonl, read_yaml, write_json, write_jsonl
+from locked_v2_eval import SCENARIOS, VI_PROMPTS
 
 ROOT = Path(__file__).resolve().parents[1]
 DATASET_SPEC_PATH = ROOT / "configs/dataset_spec.yaml"
@@ -181,6 +182,7 @@ def main() -> int:
         fallback_base_url=fallback.base_url if fallback else "",
         fallback_model=fallback.model if fallback else "",
         expand_from_provider=expand_from_provider,
+        scenario_tag_min_counts=_scenario_tag_min_counts(dataset_spec),
     )
     write_jsonl(args.output, rows)
     _report(
@@ -285,6 +287,7 @@ def _generate_rows(
     fallback_base_url: str = "",
     fallback_model: str = "",
     expand_from_provider: bool = False,
+    scenario_tag_min_counts: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
     if expand_from_provider:
         seed_batch_size = min(batch_size, count)
@@ -308,6 +311,7 @@ def _generate_rows(
             [*provider_rows, *seed_rows],
             count=count,
             id_prefix="gp4_vi_synthetic",
+            scenario_tag_min_counts=scenario_tag_min_counts,
         )
 
     rows: list[dict[str, Any]] = []
@@ -521,6 +525,7 @@ def _expand_rows_to_count(
     *,
     count: int,
     id_prefix: str,
+    scenario_tag_min_counts: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
     usable_rows = [_normalize_expandable_row(row) for row in base_rows]
     usable_rows = [row for row in usable_rows if row is not None]
@@ -528,15 +533,30 @@ def _expand_rows_to_count(
         raise RuntimeError("no expandable seed rows were available")
 
     expanded: list[dict[str, Any]] = []
-    for index in range(count):
+    v2_mode = bool(scenario_tag_min_counts)
+    if v2_mode:
+        expanded.extend(
+            _expand_v2_scenario_rows(
+                scenario_tag_min_counts or {},
+                id_prefix=id_prefix,
+                limit=count,
+            )
+        )
+
+    while len(expanded) < count:
+        index = len(expanded)
         base = usable_rows[index % len(usable_rows)]
         expected_json = dict(base["expected_json"])
         messages = list(base["messages"])
         metadata = _synthetic_metadata(base["metadata"])
         if _metadata_requires_safe_error(metadata) and "error" not in expected_json:
             expected_json = _safe_error_payload(metadata)
-        row_number = index + 1
+        if v2_mode:
+            metadata["source_dataset"] = "new"
+            metadata["scenario_tags"] = _default_scenario_tags(metadata, expected_json)
+        row_number = len(expanded) + 1
         user_content = str(messages[1]["content"])
+        variant_label = "synthetic v2 fill" if v2_mode else "synthetic variant"
         expanded.append(
             {
                 "id": f"{id_prefix}_{row_number:06d}",
@@ -544,7 +564,7 @@ def _expand_rows_to_count(
                     {"role": "system", "content": str(messages[0]["content"])},
                     {
                         "role": "user",
-                        "content": f"{user_content} [synthetic variant {row_number:06d}]",
+                        "content": f"{user_content} [{variant_label} {row_number:06d}]",
                     },
                     {
                         "role": "assistant",
@@ -560,6 +580,66 @@ def _expand_rows_to_count(
             }
         )
     return expanded
+
+def _expand_v2_scenario_rows(
+    scenario_tag_min_counts: dict[str, int],
+    *,
+    id_prefix: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for tag, minimum in scenario_tag_min_counts.items():
+        examples = SCENARIOS.get(str(tag), [])
+        if not examples:
+            continue
+        for index in range(int(minimum)):
+            if len(rows) >= limit:
+                return rows
+            prompt, expected = examples[index % len(examples)]
+            cycle = index // len(examples) + 1
+            row_number = len(rows) + 1
+            rows.append(
+                _v2_scenario_row(
+                    row_id=f"{id_prefix}_{tag}_{row_number:06d}",
+                    prompt=f"{prompt} [v2 {tag} scenario {cycle:05d}]",
+                    expected=dict(expected),
+                    tag=str(tag),
+                )
+            )
+    return rows
+
+def _v2_scenario_row(
+    *,
+    row_id: str,
+    prompt: str,
+    expected: dict[str, Any],
+    tag: str,
+) -> dict[str, Any]:
+    return {
+        "id": row_id,
+        "messages": [
+            {"role": "system", "content": "GP4 safety Semantic IR system prompt"},
+            {"role": "user", "content": prompt},
+            {
+                "role": "assistant",
+                "content": json.dumps(
+                    expected,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+            },
+        ],
+        "expected_json": expected,
+        "metadata": {
+            "language": "vi" if prompt.rsplit(" [v2 ", 1)[0] in VI_PROMPTS else "en",
+            "task_type": "hard_negative" if "error" in expected else "normal",
+            "source": "synthetic",
+            "source_dataset": "new",
+            "safety_class": "unsafe_rejected" if "error" in expected else "safe_motion_plan",
+            "requires_perception": False,
+            "scenario_tags": [tag],
+        },
+    }
 
 def _normalize_expandable_row(row: dict[str, Any]) -> dict[str, Any] | None:
     messages = row.get("messages")
@@ -612,6 +692,18 @@ def _synthetic_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
         "requires_perception": bool(metadata.get("requires_perception", False)),
     }
 
+def _default_scenario_tags(
+    metadata: dict[str, Any],
+    expected_json: dict[str, Any],
+) -> list[str]:
+    if metadata.get("task_type") == "vision_stub" or metadata.get("requires_perception"):
+        return ["vision_uncertain"]
+    if metadata.get("task_type") == "status":
+        return ["status_query"]
+    if "error" in expected_json or metadata.get("task_type") == "hard_negative":
+        return ["unsupported_tool_hallucination"]
+    return ["normal_motion"]
+
 def _metadata_requires_safe_error(metadata: dict[str, Any]) -> bool:
     return (
         metadata.get("task_type") in {"ambiguous", "hard_negative", "vision_stub"}
@@ -646,6 +738,15 @@ def _safe_error_payload(metadata: dict[str, Any]) -> dict[str, Any]:
 def _allowed_value(value: Any, allowed: set[str], default: str) -> str:
     text = str(value)
     return text if text in allowed else default
+
+def _scenario_tag_min_counts(dataset_spec: dict[str, Any]) -> dict[str, int]:
+    gates = dataset_spec.get("v2_distribution_gates", {})
+    if not isinstance(gates, dict):
+        return {}
+    minimums = gates.get("scenario_tag_min_counts", {})
+    if not isinstance(minimums, dict):
+        return {}
+    return {str(tag): int(value) for tag, value in minimums.items()}
 
 if __name__ == "__main__":
     raise SystemExit(main())

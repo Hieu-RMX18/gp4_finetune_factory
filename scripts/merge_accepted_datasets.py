@@ -41,12 +41,13 @@ def main() -> int:
 
     old_rows = _read_many([Path(path) for path in args.old])
     new_rows = _read_many([Path(path) for path in args.new])
-    quota_minimums = _quota_minimums(args.distribution_spec)
+    quota_minimums, max_legacy_rows = _distribution_policy(args.distribution_spec)
     selected, dropped_duplicates, quota_preserved = select_rows(
         old_rows,
         new_rows,
         args.target_rows,
         quota_minimums=quota_minimums,
+        max_legacy_rows_without_scenario_tags=max_legacy_rows,
     )
     selected_rows = [row for _, row in selected]
     passed = len(selected_rows) == args.target_rows
@@ -63,7 +64,10 @@ def main() -> int:
         "dropped_duplicates": dropped_duplicates,
         "quota_preserved": quota_preserved,
         "distribution": selected_distribution,
-        "quota_failures": quota_failures(selected_rows, {"scenario_tag_min_counts": quota_minimums}),
+        "quota_failures": quota_failures(
+            selected_rows,
+            _quota_gates(quota_minimums, max_legacy_rows),
+        ),
     }
     write_json(args.report, payload)
     if passed:
@@ -78,6 +82,7 @@ def select_rows(
     target_rows: int,
     *,
     quota_minimums: dict[str, int] | None = None,
+    max_legacy_rows_without_scenario_tags: int | None = None,
 ) -> tuple[list[SourceRow], int, bool]:
     selected: list[SourceRow] = []
     selected_keys: set[str] = set()
@@ -97,27 +102,74 @@ def select_rows(
         unique_candidates.append((source, row))
 
     quota_minimums = quota_minimums or {}
+    tag_candidates = _tag_candidates(unique_candidates, quota_minimums)
+    tag_offsets = {tag: 0 for tag in quota_minimums}
     for tag, minimum in quota_minimums.items():
         while _selected_tag_count(selected, tag) < int(minimum):
             if len(selected) >= target_rows:
                 break
-            candidate = _first_unselected_with_tag(unique_candidates, selected_keys, tag)
+            candidate, tag_offsets[tag] = _next_unselected_with_tag(
+                tag_candidates.get(tag, []),
+                selected_keys,
+                start=tag_offsets[tag],
+            )
             if candidate is None:
                 break
             _append_selected(selected, selected_keys, candidate)
 
-    for candidate in unique_candidates:
-        if len(selected) >= target_rows:
-            break
-        if dataset_identity_key(candidate[1]) in selected_keys:
-            continue
-        _append_selected(selected, selected_keys, candidate)
+    if max_legacy_rows_without_scenario_tags is None:
+        _fill_selected(selected, selected_keys, unique_candidates, target_rows)
+    else:
+        _fill_selected(
+            selected,
+            selected_keys,
+            unique_candidates,
+            target_rows,
+            predicate=lambda candidate: not _is_legacy_without_scenario_tags(
+                candidate[1]
+            ),
+        )
+        _fill_selected(
+            selected,
+            selected_keys,
+            unique_candidates,
+            target_rows,
+            max_legacy_rows_without_scenario_tags=max_legacy_rows_without_scenario_tags,
+        )
+        _fill_selected(selected, selected_keys, unique_candidates, target_rows)
 
     quota_preserved = not quota_failures(
         [row for _, row in selected],
-        {"scenario_tag_min_counts": quota_minimums},
+        _quota_gates(quota_minimums, max_legacy_rows_without_scenario_tags),
     )
     return selected, dropped_duplicates, quota_preserved
+
+
+def _fill_selected(
+    selected: list[SourceRow],
+    selected_keys: set[str],
+    candidates: list[SourceRow],
+    target_rows: int,
+    *,
+    predicate: Any | None = None,
+    max_legacy_rows_without_scenario_tags: int | None = None,
+) -> None:
+    legacy_rows_selected = _selected_legacy_without_scenario_tags(selected)
+    for candidate in candidates:
+        if len(selected) >= target_rows:
+            return
+        if dataset_identity_key(candidate[1]) in selected_keys:
+            continue
+        if predicate is not None and not predicate(candidate):
+            continue
+        if max_legacy_rows_without_scenario_tags is not None:
+            if not _is_legacy_without_scenario_tags(candidate[1]):
+                continue
+            if legacy_rows_selected >= max_legacy_rows_without_scenario_tags:
+                return
+        _append_selected(selected, selected_keys, candidate)
+        if max_legacy_rows_without_scenario_tags is not None:
+            legacy_rows_selected += 1
 
 
 def _append_selected(
@@ -129,35 +181,78 @@ def _append_selected(
     selected_keys.add(dataset_identity_key(candidate[1]))
 
 
-def _first_unselected_with_tag(
+def _tag_candidates(
+    candidates: list[SourceRow],
+    quota_minimums: dict[str, int],
+) -> dict[str, list[SourceRow]]:
+    wanted_tags = set(quota_minimums)
+    indexed = {tag: [] for tag in wanted_tags}
+    if not wanted_tags:
+        return indexed
+    for candidate in candidates:
+        for tag in row_scenario_tags(candidate[1]):
+            if tag in indexed:
+                indexed[tag].append(candidate)
+    return indexed
+
+
+def _next_unselected_with_tag(
     candidates: list[SourceRow],
     selected_keys: set[str],
-    tag: str,
-) -> SourceRow | None:
-    for candidate in candidates:
+    *,
+    start: int,
+) -> tuple[SourceRow | None, int]:
+    for index in range(start, len(candidates)):
+        candidate = candidates[index]
         key = dataset_identity_key(candidate[1])
         if key in selected_keys:
             continue
-        if tag in row_scenario_tags(candidate[1]):
-            return candidate
-    return None
+        return candidate, index + 1
+    return None, len(candidates)
 
 
 def _selected_tag_count(selected: list[SourceRow], tag: str) -> int:
     return sum(1 for _, row in selected if tag in row_scenario_tags(row))
 
 
-def _quota_minimums(spec_path: Path | None) -> dict[str, int]:
+def _selected_legacy_without_scenario_tags(selected: list[SourceRow]) -> int:
+    return sum(1 for _, row in selected if _is_legacy_without_scenario_tags(row))
+
+
+def _is_legacy_without_scenario_tags(row: dict[str, Any]) -> bool:
+    if row_scenario_tags(row):
+        return False
+    metadata = row.get("metadata")
+    return not (isinstance(metadata, dict) and metadata.get("source_dataset") == "new")
+
+
+def _distribution_policy(spec_path: Path | None) -> tuple[dict[str, int], int | None]:
     if spec_path is None:
-        return {}
+        return {}, None
     spec = read_yaml(spec_path)
     gates = spec.get("v2_distribution_gates", {})
     if not isinstance(gates, dict):
-        return {}
+        return {}, None
     minimums = gates.get("scenario_tag_min_counts", {})
     if not isinstance(minimums, dict):
-        return {}
-    return {str(tag): int(value) for tag, value in minimums.items()}
+        minimums = {}
+    max_legacy = gates.get("max_legacy_rows_without_scenario_tags")
+    return (
+        {str(tag): int(value) for tag, value in minimums.items()},
+        int(max_legacy) if max_legacy is not None else None,
+    )
+
+
+def _quota_gates(
+    quota_minimums: dict[str, int] | None,
+    max_legacy_rows_without_scenario_tags: int | None,
+) -> dict[str, Any]:
+    gates: dict[str, Any] = {"scenario_tag_min_counts": quota_minimums or {}}
+    if max_legacy_rows_without_scenario_tags is not None:
+        gates["max_legacy_rows_without_scenario_tags"] = (
+            max_legacy_rows_without_scenario_tags
+        )
+    return gates
 
 
 def _read_many(paths: list[Path]) -> list[dict[str, Any]]:

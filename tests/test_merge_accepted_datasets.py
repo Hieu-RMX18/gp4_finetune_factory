@@ -316,3 +316,73 @@ def test_merge_selects_quota_rows_before_stable_fill(
         "gp4_vi_old_000001",
     ]
     assert report["quota_preserved"] is True
+
+def test_merge_respects_max_legacy_rows_without_scenario_tags(
+    tmp_path: Path,
+) -> None:
+    old_path = tmp_path / "old.jsonl"
+    new_path = tmp_path / "new.jsonl"
+    output_path = tmp_path / "accepted_300k.jsonl"
+    report_path = tmp_path / "merge_report.json"
+    spec_path = tmp_path / "dataset_spec.yaml"
+    legacy_old_rows = [
+        _row("gp4_vi_old_000001", "old legacy 1", "normal_motion", "old"),
+        _row("gp4_vi_old_000002", "old legacy 2", "normal_motion", "old"),
+        _row("gp4_vi_old_000003", "old legacy 3", "normal_motion", "old"),
+    ]
+    for row in legacy_old_rows:
+        row["metadata"].pop("scenario_tags")
+    _write_jsonl(old_path, legacy_old_rows)
+    _write_jsonl(
+        new_path,
+        [
+            _row("gp4_vi_new_000001", "new normal 1", "normal_motion", "new"),
+            _row("gp4_vi_new_000002", "new normal 2", "normal_motion", "new"),
+        ],
+    )
+    spec_path.write_text(
+        "v2_distribution_gates:\n"
+        "  scenario_tag_min_counts: {}\n"
+        "  max_legacy_rows_without_scenario_tags: 1\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/merge_accepted_datasets.py",
+            "--old",
+            str(old_path),
+            "--new",
+            str(new_path),
+            "--output",
+            str(output_path),
+            "--report",
+            str(report_path),
+            "--target-rows",
+            "3",
+            "--distribution-spec",
+            str(spec_path),
+            "--cloud-root",
+            str(tmp_path),
+            "--allow-tmp",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    output_rows = [
+        json.loads(line)
+        for line in output_path.read_text(encoding="utf-8").splitlines()
+    ]
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert [row["id"] for row in output_rows] == [
+        "gp4_vi_new_000001",
+        "gp4_vi_new_000002",
+        "gp4_vi_old_000001",
+    ]
+    assert report["distribution"]["legacy_rows_without_scenario_tags"] == 1
+    assert report["quota_preserved"] is True

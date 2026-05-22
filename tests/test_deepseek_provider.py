@@ -261,6 +261,72 @@ def test_provider_seed_rows_can_be_expanded_to_requested_count() -> None:
     assert len({row["messages"][1]["content"] for row in rows}) == 3
     assert all(row["metadata"]["source"] == "synthetic" for row in rows)
 
+def test_seed_expansion_can_generate_v2_tagged_quota_rows() -> None:
+    seed_rows = [
+        {
+            "id": "gp4_vi_normal_000001",
+            "messages": [
+                {"role": "system", "content": "GP4 safety Semantic IR system prompt"},
+                {"role": "user", "content": "move up"},
+                {"role": "assistant", "content": "{\"intent\":\"stop\"}"},
+            ],
+            "expected_json": {"intent": "stop"},
+            "metadata": {
+                "language": "vi",
+                "task_type": "normal",
+                "source": "seed",
+                "safety_class": "safe_motion_plan",
+                "requires_perception": False,
+            },
+        }
+    ]
+
+    rows = _expand_rows_to_count(
+        seed_rows,
+        count=3,
+        id_prefix="gp4_vi_synthetic",
+        scenario_tag_min_counts={"singularity": 2, "wrist_flip": 1},
+    )
+
+    tag_counts: dict[str, int] = {}
+    for row in rows:
+        assert row["metadata"]["source_dataset"] == "new"
+        for tag in row["metadata"]["scenario_tags"]:
+            tag_counts[tag] = tag_counts.get(tag, 0) + 1
+    assert tag_counts == {"singularity": 2, "wrist_flip": 1}
+    assert len({row["messages"][1]["content"] for row in rows}) == 3
+
+def test_seed_expansion_marks_v2_rows_when_count_is_below_total_quota() -> None:
+    seed_rows = [
+        {
+            "id": "gp4_vi_normal_000001",
+            "messages": [
+                {"role": "system", "content": "GP4 safety Semantic IR system prompt"},
+                {"role": "user", "content": "move up"},
+                {"role": "assistant", "content": "{\"intent\":\"stop\"}"},
+            ],
+            "expected_json": {"intent": "stop"},
+            "metadata": {
+                "language": "vi",
+                "task_type": "normal",
+                "source": "seed",
+                "safety_class": "safe_motion_plan",
+                "requires_perception": False,
+            },
+        }
+    ]
+
+    rows = _expand_rows_to_count(
+        seed_rows,
+        count=1,
+        id_prefix="gp4_vi_synthetic",
+        scenario_tag_min_counts={"singularity": 2, "wrist_flip": 1},
+    )
+
+    assert rows[0]["metadata"]["source_dataset"] == "new"
+    assert rows[0]["metadata"]["scenario_tags"] == ["singularity"]
+
+
 def test_seed_expansion_converts_perception_rows_to_safe_errors() -> None:
     seed_rows = [
         {

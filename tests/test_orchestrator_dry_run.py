@@ -489,6 +489,61 @@ def test_v2_target_plan_accounts_for_unique_old_rows_and_quota_deficits() -> Non
     assert plan["new_rows_requested"] == 2
 
 
+def test_v2_target_plan_requests_rows_to_satisfy_legacy_cap() -> None:
+    from cloud_orchestrator import _build_v2_target_plan
+
+    old_rows = [
+        {
+            "messages": [{"role": "user", "content": f"legacy {index}"}],
+            "expected_json": {"intent": "stop"},
+            "metadata": {},
+        }
+        for index in range(3)
+    ]
+    spec = {
+        "v2_merge_policy": {"target_total_accepted_rows": 3},
+        "v2_distribution_gates": {
+            "scenario_tag_min_counts": {},
+            "max_legacy_rows_without_scenario_tags": 1,
+        },
+    }
+
+    plan = _build_v2_target_plan(old_rows, spec)
+
+    assert plan["unique_row_shortfall"] == 0
+    assert plan["legacy_cap_new_rows"] == 2
+    assert plan["new_rows_requested"] == 2
+
+
+def test_v2_target_plan_requests_full_quota_seed_when_any_tag_deficit_exists() -> None:
+    from cloud_orchestrator import _build_v2_target_plan
+
+    old_rows = [
+        {
+            "messages": [{"role": "user", "content": f"covered singularity {index}"}],
+            "expected_json": {"intent": "stop"},
+            "metadata": {"scenario_tags": ["singularity"]},
+        }
+        for index in range(4)
+    ]
+    spec = {
+        "v2_merge_policy": {"target_total_accepted_rows": 4},
+        "v2_distribution_gates": {
+            "scenario_tag_min_counts": {
+                "singularity": 3,
+                "dangerous_os_command": 1,
+            }
+        },
+    }
+
+    plan = _build_v2_target_plan(old_rows, spec)
+
+    assert plan["unique_row_shortfall"] == 0
+    assert plan["quota_deficit_rows"] == 1
+    assert plan["quota_seed_rows"] == 4
+    assert plan["new_rows_requested"] == 4
+
+
 def test_orchestrator_full_cloud_phase_dry_run_has_no_unknown_phases(
     tmp_path: Path,
 ) -> None:

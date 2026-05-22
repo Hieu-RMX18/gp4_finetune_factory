@@ -612,24 +612,47 @@ def _build_v2_target_plan(
     unique_old_rows = _unique_rows(old_rows)
     distribution = distribution_summary(unique_old_rows)
     scenario_counts = distribution.get("scenario_tags", {})
+    legacy_rows = int(distribution.get("legacy_rows_without_scenario_tags", 0))
     gates = spec.get("v2_distribution_gates", {})
     minimums = gates.get("scenario_tag_min_counts", {}) if isinstance(gates, dict) else {}
+    max_legacy_rows = (
+        int(gates["max_legacy_rows_without_scenario_tags"])
+        if isinstance(gates, dict) and "max_legacy_rows_without_scenario_tags" in gates
+        else None
+    )
     quota_deficit_rows = 0
+    quota_seed_rows = 0
     if isinstance(minimums, dict):
         for tag, minimum in minimums.items():
             quota_deficit_rows += max(
                 0,
                 int(minimum) - int(scenario_counts.get(str(tag), 0)),
             )
+            quota_seed_rows += int(minimum)
+    if quota_deficit_rows == 0:
+        quota_seed_rows = 0
     unique_row_shortfall = max(0, target_rows - len(unique_old_rows))
+    if max_legacy_rows is None:
+        legacy_cap_new_rows = unique_row_shortfall
+    else:
+        nonlegacy_old_rows = max(0, len(unique_old_rows) - legacy_rows)
+        old_rows_allowed_by_cap = nonlegacy_old_rows + min(legacy_rows, max_legacy_rows)
+        legacy_cap_new_rows = max(0, target_rows - old_rows_allowed_by_cap)
     return {
         "target_rows": target_rows,
         "old_rows_valid": len(old_rows),
         "old_unique_rows": len(unique_old_rows),
         "old_distribution": distribution,
         "unique_row_shortfall": unique_row_shortfall,
+        "legacy_cap_new_rows": legacy_cap_new_rows,
         "quota_deficit_rows": quota_deficit_rows,
-        "new_rows_requested": max(unique_row_shortfall, quota_deficit_rows),
+        "quota_seed_rows": quota_seed_rows,
+        "new_rows_requested": max(
+            unique_row_shortfall,
+            quota_deficit_rows,
+            legacy_cap_new_rows,
+            quota_seed_rows,
+        ),
     }
 
 
