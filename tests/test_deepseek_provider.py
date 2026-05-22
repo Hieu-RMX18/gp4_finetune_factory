@@ -145,6 +145,70 @@ def test_deepseek_generation_batches_until_requested_count(monkeypatch) -> None:
     assert len(rows) == 5
     assert calls == [3, 3, 1]
 
+def test_v2_generation_expands_provider_seed_rows_with_required_tags(monkeypatch) -> None:
+    calls: list[int] = []
+    seed_rows = [
+        {
+            "id": "gp4_vi_normal_000001",
+            "messages": [
+                {"role": "system", "content": "GP4 safety Semantic IR system prompt"},
+                {"role": "user", "content": "move up"},
+                {"role": "assistant", "content": "{\"intent\":\"stop\"}"},
+            ],
+            "expected_json": {"intent": "stop"},
+            "metadata": {
+                "language": "vi",
+                "task_type": "normal",
+                "source": "seed",
+                "safety_class": "safe_motion_plan",
+                "requires_perception": False,
+            },
+        }
+    ]
+
+    class FakeResponse:
+        def __enter__(self) -> "FakeResponse":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(
+                {"choices": [{"message": {"content": json.dumps({"examples": seed_rows})}}]}
+            ).encode("utf-8")
+
+    def fake_urlopen(request, timeout: int):
+        payload = json.loads(request.data.decode("utf-8"))
+        user_payload = json.loads(payload["messages"][1]["content"])
+        calls.append(int(user_payload["requested_rows"]))
+        return FakeResponse()
+
+    monkeypatch.setattr("generate_batch_deepseek.urllib.request.urlopen", fake_urlopen)
+
+    rows = _generate_rows(
+        api_key="sk-test",
+        base_url="https://api.deepseek.com",
+        model="deepseek-v4-flash",
+        seed_rows=seed_rows,
+        count=5,
+        temperature=0.4,
+        max_tokens=7000,
+        batch_size=2,
+        retry_limit=1,
+        scenario_tag_min_counts={"singularity": 2, "wrist_flip": 1},
+    )
+
+    tag_counts: dict[str, int] = {}
+    for row in rows:
+        assert row["metadata"]["source_dataset"] == "new"
+        for tag in row["metadata"]["scenario_tags"]:
+            tag_counts[tag] = tag_counts.get(tag, 0) + 1
+    assert len(rows) == 5
+    assert calls == [2]
+    assert tag_counts["singularity"] == 2
+    assert tag_counts["wrist_flip"] == 1
+
 def test_deepseek_generation_falls_back_to_9router_gpt54(monkeypatch) -> None:
     calls: list[tuple[str, str]] = []
 

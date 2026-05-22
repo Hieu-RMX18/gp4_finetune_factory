@@ -289,7 +289,7 @@ def _generate_rows(
     expand_from_provider: bool = False,
     scenario_tag_min_counts: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
-    if expand_from_provider:
+    if expand_from_provider or scenario_tag_min_counts:
         seed_batch_size = min(batch_size, count)
         try:
             provider_rows = _generate_rows_batch(
