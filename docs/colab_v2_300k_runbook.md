@@ -7,8 +7,8 @@ Use this checkpoint when resuming the v2 300k fine-tune from Colab. Do not run t
 - Google account: `johnwickiller4444@gmail.com`
 - Drive root: `/content/drive/MyDrive/gp4_finetune_factory`
 - Source branch: `codex/gp4-react-ir-cloud-workflow`
-- Factory source commit: `a4bb93259fda433193f97c33977c05e8d3af8318`
-- `GP4_FACTORY_SOURCE_EXPECTED_COMMIT=a4bb93259fda433193f97c33977c05e8d3af8318`
+- Factory source commit: `75f2eec6beaf08ef8773d7d5b125355edbbaef93`
+- `GP4_FACTORY_SOURCE_EXPECTED_COMMIT=75f2eec6beaf08ef8773d7d5b125355edbbaef93`
 - `gp4_ws` branch: `ws-deep-rebuild-3526`
 - `GP4_WS_EXPECTED_COMMIT=3bbcb0726a4c3305c086c93e2b1e4a320471090b`
 
@@ -43,7 +43,7 @@ export GP4_DRIVE_ACCOUNT_CONFIRMED=johnwickiller4444@gmail.com
 export GP4_PREVIOUS_RUN_ID=<previous_run_id>
 export GP4_OLD_DATASET=/content/drive/MyDrive/gp4_finetune_factory/<previous_run_id>/data/validated/accepted_300k.jsonl
 export GP4_PREVIOUS_ADAPTER=/content/drive/MyDrive/gp4_finetune_factory/<previous_run_id>/models/qwen25_gp4_lora
-export GP4_FACTORY_SOURCE_EXPECTED_COMMIT=a4bb93259fda433193f97c33977c05e8d3af8318
+export GP4_FACTORY_SOURCE_EXPECTED_COMMIT=75f2eec6beaf08ef8773d7d5b125355edbbaef93
 export GP4_WS_EXPECTED_COMMIT=3bbcb0726a4c3305c086c93e2b1e4a320471090b
 ```
 
