@@ -152,12 +152,13 @@ def _train(
     resume_from_adapter: Path | None,
 ) -> None:
     import torch
-    from datasets import Dataset
-    from trl import SFTConfig, SFTTrainer
-    from unsloth import FastLanguageModel
 
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA GPU is required for Qwen2.5-7B 4-bit QLoRA training.")
+
+    from datasets import Dataset
+    from trl import SFTConfig, SFTTrainer
+    from unsloth import FastLanguageModel
 
     token = os.getenv("HF_TOKEN") or None
     load_source = str(resume_from_adapter) if resume_from_adapter is not None else model_name
