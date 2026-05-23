@@ -71,6 +71,7 @@ def test_colab_notebook_loads_optional_provider_secrets() -> None:
 
     assert "from google.colab import userdata" in secret_source
     assert "'DEEPSEEK_API_KEY'" in secret_source
+    assert "'HF_TOKEN'" in secret_source
     assert "userdata.get(secret_name)" in secret_source
     assert "except Exception" in secret_source
     assert "'OPENAI_BASE_URL'" in secret_source
@@ -101,6 +102,11 @@ def test_colab_notebook_locks_drive_account_and_reuses_previous_accepted_dataset
     assert "checkpoint-*" in setup_source
     assert "if previous_dir.name == RUN_ID:" in setup_source
     assert "continue" in setup_source
+    assert "def _is_under(path, root):" in setup_source
+    assert "Ignoring stale GP4_OLD_DATASET from the current run:" in setup_source
+    assert "Ignoring stale GP4_PREVIOUS_ADAPTER from the current run:" in setup_source
+    assert "os.environ.pop('GP4_OLD_DATASET', None)" in setup_source
+    assert "os.environ.pop('GP4_PREVIOUS_ADAPTER', None)" in setup_source
     assert setup_source.index("if previous_dir.name == RUN_ID:") < setup_source.index(
         "accepted_path = previous_dir / 'data/validated/accepted_300k.jsonl'"
     )
