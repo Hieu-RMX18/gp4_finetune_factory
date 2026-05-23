@@ -166,6 +166,31 @@ def test_colab_readiness_report_passes_for_adapter_only_previous_reuse(
     assert report["previous_run"]["matched"] is True
 
 
+def test_colab_readiness_report_passes_for_legacy_drive_root_pilot_adapter(
+    tmp_path: Path,
+) -> None:
+    cloud_root, _old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = cloud_root.parent / "models/qwen25_gp4_lora_pilot"
+    _adapter(previous_adapter)
+
+    report = build_colab_readiness_report(
+        cloud_root=cloud_root,
+        run_id="run",
+        gp4_ws=gp4_ws,
+        old_dataset=None,
+        previous_adapter=previous_adapter,
+        expected_commit=expected_commit,
+        allow_adapter_only_reuse=True,
+        policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
+    )
+
+    assert report["passed"] is True
+    assert report["previous_adapter"]["path"] == str(previous_adapter)
+    assert report["previous_run"]["previous_adapter_run_id"] == "legacy-drive-root"
+    assert report["previous_run"]["adapter_only_reuse"] is True
+    assert report["previous_run"]["matched"] is True
+
+
 def test_colab_readiness_report_rejects_adapter_only_current_run_reuse(
     tmp_path: Path,
 ) -> None:

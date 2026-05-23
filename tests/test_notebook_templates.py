@@ -97,8 +97,12 @@ def test_colab_notebook_locks_drive_account_and_reuses_previous_accepted_dataset
     assert "GP4_PREVIOUS_ADAPTER" in setup_source
     assert "GP4_OLD_DATASET" in setup_source
     assert "data/validated/accepted_300k.jsonl" in setup_source
-    assert "models/qwen25_gp4_lora" in setup_source
+    assert "qwen25_gp4_lora" in setup_source
+    assert "Path(previous_dir) / 'models' / adapter_name" in setup_source
+    assert "qwen25_gp4_lora_pilot" in setup_source
+    assert "LEGACY_DRIVE_ROOT_RUN_ID = 'legacy-drive-root'" in setup_source
     assert "def _adapter_candidates_for_run(previous_dir):" in setup_source
+    assert "def _adapter_candidates_for_drive_root(drive_root):" in setup_source
     assert "checkpoint-*" in setup_source
     assert "if previous_dir.name == RUN_ID:" in setup_source
     assert "continue" in setup_source

@@ -32,6 +32,9 @@ for the newest prior accepted dataset and the newest prior adapter. It can
 select the newest adapter checkpoint under
 `models/qwen25_gp4_lora/checkpoint-*` when the root adapter folder does not yet
 contain final adapter weights.
+It also recognizes the older Drive-root pilot adapter layout
+`/content/drive/MyDrive/gp4_finetune_factory/models/qwen25_gp4_lora_pilot`,
+including `checkpoint-*` children, as `legacy-drive-root` adapter-only reuse.
 
 ```bash
 export GP4_DRIVE_ROOT=/content/drive/MyDrive/gp4_finetune_factory

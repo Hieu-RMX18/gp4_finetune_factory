@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DATASET_SPEC = ROOT / "configs/dataset_spec.yaml"
 EXPECTED_DRIVE_ACCOUNT_EMAIL = "johnwickiller4444@gmail.com"
 MIN_EXPECTED_COMMIT_LENGTH = 12
+ADAPTER_DIR_NAMES = ("qwen25_gp4_lora", "qwen25_gp4_lora_pilot")
+LEGACY_DRIVE_ROOT_RUN_ID = "legacy-drive-root"
 
 
 def main() -> int:
@@ -374,10 +376,12 @@ def _previous_adapter_run_id_from_path(
     except ValueError:
         return ""
     parts = relative.parts
-    if len(parts) < 3:
+    if len(parts) < 2:
         return ""
+    if parts[0] == "models" and parts[1] in ADAPTER_DIR_NAMES:
+        return LEGACY_DRIVE_ROOT_RUN_ID
     for index in range(1, len(parts) - 1):
-        if parts[index : index + 2] == ("models", "qwen25_gp4_lora"):
+        if parts[index] == "models" and parts[index + 1] in ADAPTER_DIR_NAMES:
             return parts[0]
     return ""
 

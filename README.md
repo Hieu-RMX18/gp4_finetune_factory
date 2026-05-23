@@ -91,6 +91,8 @@ the prior `data/validated/accepted_300k.jsonl` file under Google Drive before
 running the notebook. Set `GP4_PREVIOUS_ADAPTER` to the prior
 `models/qwen25_gp4_lora` folder under Google Drive, or let the notebook resolve
 it from `GP4_PREVIOUS_RUN_ID`.
+For older 30k/50k Colab runs, the notebook also recognizes the Drive-root
+pilot adapter layout `models/qwen25_gp4_lora_pilot` as adapter-only reuse.
 If Drive has a previous adapter but no usable previous accepted dataset, the
 notebook uses adapter-only reuse and passes `--allow-adapter-only-reuse` to the
 readiness report; the orchestrator then requests 300k new rows and keeps
