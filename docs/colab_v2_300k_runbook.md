@@ -7,8 +7,8 @@ Use this checkpoint when resuming the v2 300k fine-tune from Colab. Do not run t
 - Google account: `johnwickiller4444@gmail.com`
 - Drive root: `/content/drive/MyDrive/gp4_finetune_factory`
 - Source branch: `codex/gp4-react-ir-cloud-workflow`
-- Factory source commit: `d381a09f75da54ecddc21d0b400a0da7ac4d56a4`
-- `GP4_FACTORY_SOURCE_EXPECTED_COMMIT=d381a09f75da54ecddc21d0b400a0da7ac4d56a4`
+- Factory source commit: `ee8d80e3a285888e1edc575c4e108c3aa5d6eeb5`
+- `GP4_FACTORY_SOURCE_EXPECTED_COMMIT=ee8d80e3a285888e1edc575c4e108c3aa5d6eeb5`
 - `gp4_ws` branch: `ws-deep-rebuild-3526`
 - `GP4_WS_EXPECTED_COMMIT=3bbcb0726a4c3305c086c93e2b1e4a320471090b`
 
@@ -28,8 +28,9 @@ from a different prior run, the notebook uses explicit mixed-prior-artifacts
 readiness. Current-run datasets or adapters are still rejected.
 
 If all three reuse inputs are unset, the Colab notebook scans the Drive root
-for the newest prior accepted dataset and the newest prior adapter. It can
-select the newest adapter checkpoint under
+for the newest prior accepted dataset and newest prior adapter independently,
+so a v2 300k dataset can be paired with an older 30k/50k adapter checkpoint
+when they live in different prior runs. It can select the newest adapter checkpoint under
 `models/qwen25_gp4_lora/checkpoint-*` when the root adapter folder does not yet
 contain final adapter weights.
 It also recognizes the older Drive-root pilot adapter layout
@@ -42,7 +43,7 @@ export GP4_DRIVE_ACCOUNT_CONFIRMED=johnwickiller4444@gmail.com
 export GP4_PREVIOUS_RUN_ID=<previous_run_id>
 export GP4_OLD_DATASET=/content/drive/MyDrive/gp4_finetune_factory/<previous_run_id>/data/validated/accepted_300k.jsonl
 export GP4_PREVIOUS_ADAPTER=/content/drive/MyDrive/gp4_finetune_factory/<previous_run_id>/models/qwen25_gp4_lora
-export GP4_FACTORY_SOURCE_EXPECTED_COMMIT=d381a09f75da54ecddc21d0b400a0da7ac4d56a4
+export GP4_FACTORY_SOURCE_EXPECTED_COMMIT=ee8d80e3a285888e1edc575c4e108c3aa5d6eeb5
 export GP4_WS_EXPECTED_COMMIT=3bbcb0726a4c3305c086c93e2b1e4a320471090b
 ```
 

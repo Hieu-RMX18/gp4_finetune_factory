@@ -104,8 +104,20 @@ def select_rows(
     quota_minimums = quota_minimums or {}
     tag_candidates = _tag_candidates(unique_candidates, quota_minimums)
     tag_offsets = {tag: 0 for tag in quota_minimums}
+    selected_tag_counts = {tag: 0 for tag in quota_minimums}
+    legacy_rows_selected = 0
+
+    def append_selected(candidate: SourceRow) -> None:
+        nonlocal legacy_rows_selected
+        _append_selected(selected, selected_keys, candidate)
+        for tag in row_scenario_tags(candidate[1]):
+            if tag in selected_tag_counts:
+                selected_tag_counts[tag] += 1
+        if _is_legacy_without_scenario_tags(candidate[1]):
+            legacy_rows_selected += 1
+
     for tag, minimum in quota_minimums.items():
-        while _selected_tag_count(selected, tag) < int(minimum):
+        while selected_tag_counts[tag] < int(minimum):
             if len(selected) >= target_rows:
                 break
             candidate, tag_offsets[tag] = _next_unselected_with_tag(
@@ -115,28 +127,46 @@ def select_rows(
             )
             if candidate is None:
                 break
-            _append_selected(selected, selected_keys, candidate)
+            append_selected(candidate)
 
     if max_legacy_rows_without_scenario_tags is None:
-        _fill_selected(selected, selected_keys, unique_candidates, target_rows)
-    else:
-        _fill_selected(
+        legacy_rows_selected = _fill_selected(
             selected,
             selected_keys,
             unique_candidates,
             target_rows,
+            append_selected=append_selected,
+            legacy_rows_selected=legacy_rows_selected,
+        )
+    else:
+        legacy_rows_selected = _fill_selected(
+            selected,
+            selected_keys,
+            unique_candidates,
+            target_rows,
+            append_selected=append_selected,
+            legacy_rows_selected=legacy_rows_selected,
             predicate=lambda candidate: not _is_legacy_without_scenario_tags(
                 candidate[1]
             ),
         )
+        legacy_rows_selected = _fill_selected(
+            selected,
+            selected_keys,
+            unique_candidates,
+            target_rows,
+            append_selected=append_selected,
+            legacy_rows_selected=legacy_rows_selected,
+            max_legacy_rows_without_scenario_tags=max_legacy_rows_without_scenario_tags,
+        )
         _fill_selected(
             selected,
             selected_keys,
             unique_candidates,
             target_rows,
-            max_legacy_rows_without_scenario_tags=max_legacy_rows_without_scenario_tags,
+            append_selected=append_selected,
+            legacy_rows_selected=legacy_rows_selected,
         )
-        _fill_selected(selected, selected_keys, unique_candidates, target_rows)
 
     quota_preserved = not quota_failures(
         [row for _, row in selected],
@@ -151,13 +181,14 @@ def _fill_selected(
     candidates: list[SourceRow],
     target_rows: int,
     *,
+    append_selected: Any,
+    legacy_rows_selected: int,
     predicate: Any | None = None,
     max_legacy_rows_without_scenario_tags: int | None = None,
-) -> None:
-    legacy_rows_selected = _selected_legacy_without_scenario_tags(selected)
+) -> int:
     for candidate in candidates:
         if len(selected) >= target_rows:
-            return
+            return legacy_rows_selected
         if dataset_identity_key(candidate[1]) in selected_keys:
             continue
         if predicate is not None and not predicate(candidate):
@@ -166,10 +197,11 @@ def _fill_selected(
             if not _is_legacy_without_scenario_tags(candidate[1]):
                 continue
             if legacy_rows_selected >= max_legacy_rows_without_scenario_tags:
-                return
-        _append_selected(selected, selected_keys, candidate)
-        if max_legacy_rows_without_scenario_tags is not None:
+                return legacy_rows_selected
+        append_selected(candidate)
+        if _is_legacy_without_scenario_tags(candidate[1]):
             legacy_rows_selected += 1
+    return legacy_rows_selected
 
 
 def _append_selected(
@@ -209,16 +241,6 @@ def _next_unselected_with_tag(
             continue
         return candidate, index + 1
     return None, len(candidates)
-
-
-def _selected_tag_count(selected: list[SourceRow], tag: str) -> int:
-    return sum(1 for _, row in selected if tag in row_scenario_tags(row))
-
-
-def _selected_legacy_without_scenario_tags(selected: list[SourceRow]) -> int:
-    return sum(1 for _, row in selected if _is_legacy_without_scenario_tags(row))
-
-
 def _is_legacy_without_scenario_tags(row: dict[str, Any]) -> bool:
     if row_scenario_tags(row):
         return False
