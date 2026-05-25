@@ -76,6 +76,9 @@ Provenance, and Maintenance Reference sections. The completion audit must pass
 before any downstream install readiness claim is accepted. The Maintenance
 Reference must include `raw_candidate_rows_requested` so future runs can compare
 the raw generation budget against the accepted-row target.
+`platform_status_${RUN_ID}.json` must show `gpu_required=true` and
+`gpu_available=true`; if Colab reports GPU usage limits, stop before generation
+or training and retry only after Colab can allocate a GPU.
 If a notebook subprocess fails, inspect `<label>_failure_${RUN_ID}.json` under
 `$CLOUD_ROOT/reports/`; it records the command, return code, and stdout/stderr tails.
 `local-install-manifest_${RUN_ID}.json` is a Drive-stored readiness artifact, not a local install action.

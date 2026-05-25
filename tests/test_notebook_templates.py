@@ -181,6 +181,26 @@ def test_cloud_notebooks_name_final_benchmark_and_audit_artifacts() -> None:
     assert "Maintenance Reference" in source
 
 
+def test_colab_notebook_displays_final_benchmark_report_inline() -> None:
+    notebook = json.loads(
+        (ROOT / "notebooks/colab_gp4_react_qwen25_qlora.ipynb").read_text(
+            encoding="utf-8"
+        )
+    )
+    source = "\n".join(
+        "".join(cell.get("source", [])) for cell in notebook.get("cells", [])
+    )
+
+    assert "GP4 V2 Completion Report" in source
+    assert "benchmark_json_path = reports_dir / f'benchmark-report_{RUN_ID}.json'" in source
+    assert "benchmark_html_path = reports_dir / f'benchmark_report_{RUN_ID}.html'" in source
+    assert "benchmark_markdown_path = reports_dir / f'benchmark_report_{RUN_ID}.md'" in source
+    assert "completion_audit_path = reports_dir / f'completion_audit_{RUN_ID}.json'" in source
+    assert "display(HTML(require_report(benchmark_html_path).read_text" in source
+    assert "display(Markdown(require_report(benchmark_markdown_path).read_text" in source
+    assert "raise FileNotFoundError(f'Missing final report artifact: {path}')" in source
+
+
 def test_colab_notebook_command_surface_excludes_dangerous_os_commands() -> None:
     notebook = json.loads(
         (ROOT / "notebooks/colab_gp4_react_qwen25_qlora.ipynb").read_text(
@@ -229,6 +249,7 @@ def test_colab_notebook_writes_failure_reports_for_subprocess_steps() -> None:
     assert "subprocess.CalledProcessError" in setup_source
     assert "run_checked('pip-install'" in pip_source
     assert "run_checked('provider-probe'" in provider_source
+    assert "'--require-gpu'" in provider_source
     assert "run_checked('colab-readiness', readiness_command)" in orchestrator_source
     assert "run_checked('cloud-orchestrator', orchestrator_command)" in orchestrator_source
     assert "run_checked('completion-audit'" in audit_source

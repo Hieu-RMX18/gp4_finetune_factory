@@ -1260,6 +1260,124 @@ def test_train_unsloth_builds_sft_trainer_from_chat_text_rows(tmp_path: Path) ->
     assert captured["trainer"]["eval_dataset"] == [{"text": "val"}]
 
 
+def test_train_unsloth_uses_fp16_not_bf16_for_colab_t4(tmp_path: Path) -> None:
+    import train_unsloth_qlora
+
+    captured: dict[str, object] = {}
+
+    class SFTConfig:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    training = {
+        "max_seq_length": 2048,
+        "max_steps": 100,
+        "per_device_train_batch_size": 2,
+        "gradient_accumulation_steps": 4,
+        "learning_rate": 2e-4,
+        "logging_steps": 5,
+        "save_steps": 25,
+        "seed": 3407,
+    }
+
+    train_unsloth_qlora._build_sft_config(
+        SFTConfig,
+        output_dir=tmp_path / "adapter",
+        training=training,
+    )
+
+    assert captured["fp16"] is True
+    assert captured["bf16"] is False
+
+
+def test_train_unsloth_replaces_invalid_eos_token_with_qwen_im_end() -> None:
+    import train_unsloth_qlora
+
+    class Tokenizer:
+        eos_token = "<EOS_TOKEN>"
+        pad_token = "<|PAD_TOKEN|>"
+        unk_token = None
+        unk_token_id = None
+
+        def convert_tokens_to_ids(self, token: str) -> int | None:
+            return {
+                "<EOS_TOKEN>": None,
+                "<|im_end|>": 151645,
+                "<|PAD_TOKEN|>": 151665,
+            }.get(token)
+
+    tokenizer = Tokenizer()
+
+    train_unsloth_qlora._configure_tokenizer_special_tokens(tokenizer)
+
+    assert tokenizer.eos_token == "<|im_end|>"
+    assert tokenizer.pad_token == "<|PAD_TOKEN|>"
+
+
+def test_train_unsloth_passes_tokenizer_special_tokens_to_sft_config(
+    tmp_path: Path,
+) -> None:
+    import train_unsloth_qlora
+
+    captured: dict[str, object] = {}
+
+    class SFTConfig:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    class Tokenizer:
+        eos_token = "<|im_end|>"
+        pad_token = "<|PAD_TOKEN|>"
+
+    training = {
+        "max_seq_length": 2048,
+        "max_steps": 100,
+        "per_device_train_batch_size": 2,
+        "gradient_accumulation_steps": 4,
+        "learning_rate": 2e-4,
+        "logging_steps": 5,
+        "save_steps": 25,
+        "seed": 3407,
+    }
+
+    train_unsloth_qlora._build_sft_config(
+        SFTConfig,
+        output_dir=tmp_path / "adapter",
+        training=training,
+        tokenizer=Tokenizer(),
+    )
+
+    assert captured["eos_token"] == "<|im_end|>"
+    assert captured["pad_token"] == "<|PAD_TOKEN|>"
+
+
+def test_train_unsloth_imports_unsloth_before_trl() -> None:
+    source = (ROOT / "scripts/train_unsloth_qlora.py").read_text(encoding="utf-8")
+
+    assert source.index("from unsloth import FastLanguageModel") < source.index(
+        "from trl import SFTConfig, SFTTrainer"
+    )
+
+
+def test_train_unsloth_uses_spawn_for_dataset_tokenization(monkeypatch) -> None:
+    import train_unsloth_qlora
+
+    calls: list[tuple[str, bool]] = []
+
+    def set_start_method(method: str, *, force: bool = False) -> None:
+        calls.append((method, force))
+
+    monkeypatch.setattr(
+        train_unsloth_qlora.multiprocessing,
+        "set_start_method",
+        set_start_method,
+    )
+
+    train_unsloth_qlora._configure_single_process_dataset_map()
+
+    assert calls == [("spawn", True)]
+
+
 def test_train_unsloth_writes_blocked_report_for_runtime_failure(
     tmp_path: Path, monkeypatch
 ) -> None:

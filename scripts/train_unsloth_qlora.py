@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import inspect
+import multiprocessing
 import os
 import traceback
 from pathlib import Path
@@ -20,6 +21,8 @@ from package_adapter import adapter_artifact_exists
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC_PATH = ROOT / "configs/dataset_spec.yaml"
+QWEN_EOS_TOKEN_CANDIDATES = ("<|im_end|>", "<|endoftext|>")
+QWEN_PAD_TOKEN_CANDIDATES = ("<|PAD_TOKEN|>", "<|endoftext|>")
 
 
 def main() -> int:
@@ -140,6 +143,50 @@ def _training_config(spec: dict[str, Any], *, max_steps: int | None) -> dict[str
     }
 
 
+def _configure_tokenizer_special_tokens(tokenizer: Any) -> None:
+    if not _token_exists(tokenizer, getattr(tokenizer, "eos_token", None)):
+        tokenizer.eos_token = _first_existing_token(
+            tokenizer,
+            QWEN_EOS_TOKEN_CANDIDATES,
+            "EOS",
+        )
+    if not _token_exists(tokenizer, getattr(tokenizer, "pad_token", None)):
+        tokenizer.pad_token = _first_existing_token(
+            tokenizer,
+            (getattr(tokenizer, "eos_token", None), *QWEN_PAD_TOKEN_CANDIDATES),
+            "padding",
+        )
+
+
+def _configure_single_process_dataset_map() -> None:
+    multiprocessing.set_start_method("spawn", force=True)
+
+
+def _first_existing_token(
+    tokenizer: Any,
+    candidates: tuple[str | None, ...],
+    label: str,
+) -> str:
+    for token in candidates:
+        if _token_exists(tokenizer, token):
+            return str(token)
+    raise RuntimeError(f"Unable to find a valid {label} token in tokenizer vocabulary.")
+
+
+def _token_exists(tokenizer: Any, token: str | None) -> bool:
+    if not token:
+        return False
+    try:
+        token_id = tokenizer.convert_tokens_to_ids(token)
+    except Exception:
+        return True
+    if token_id is None or token_id == -1:
+        return False
+    unk_token_id = getattr(tokenizer, "unk_token_id", None)
+    unk_token = getattr(tokenizer, "unk_token", None)
+    return not (unk_token_id is not None and token_id == unk_token_id and token != unk_token)
+
+
 def _train(
     *,
     train_path: Path,
@@ -156,10 +203,11 @@ def _train(
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA GPU is required for Qwen2.5-7B 4-bit QLoRA training.")
 
+    from unsloth import FastLanguageModel
     from datasets import Dataset
     from trl import SFTConfig, SFTTrainer
-    from unsloth import FastLanguageModel
 
+    _configure_single_process_dataset_map()
     token = os.getenv("HF_TOKEN") or None
     load_source = str(resume_from_adapter) if resume_from_adapter is not None else model_name
     model, tokenizer = FastLanguageModel.from_pretrained(
@@ -169,6 +217,7 @@ def _train(
         load_in_4bit=training["load_in_4bit"],
         token=token,
     )
+    _configure_tokenizer_special_tokens(tokenizer)
     if resume_from_adapter is None:
         model = FastLanguageModel.get_peft_model(
             model,
@@ -253,6 +302,7 @@ def _build_sft_trainer(
             sft_config_cls,
             output_dir=output_dir,
             training=training,
+            tokenizer=tokenizer,
         ),
     }
     if _constructor_accepts(sft_trainer_cls, "processing_class"):
@@ -269,7 +319,11 @@ def _build_sft_trainer(
 
 
 def _build_sft_config(
-    sft_config_cls: Any, *, output_dir: Path, training: dict[str, Any]
+    sft_config_cls: Any,
+    *,
+    output_dir: Path,
+    training: dict[str, Any],
+    tokenizer: Any | None = None,
 ) -> Any:
     kwargs: dict[str, Any] = {
         "output_dir": str(output_dir),
@@ -281,6 +335,8 @@ def _build_sft_config(
         "save_steps": training["save_steps"],
         "seed": training["seed"],
         "optim": "adamw_8bit",
+        "fp16": True,
+        "bf16": False,
         "dataloader_num_workers": 0,
         "report_to": [],
     }
@@ -292,6 +348,10 @@ def _build_sft_config(
         kwargs["packing"] = False
     if _constructor_accepts(sft_config_cls, "dataset_text_field"):
         kwargs["dataset_text_field"] = "text"
+    if tokenizer is not None and _constructor_accepts(sft_config_cls, "eos_token"):
+        kwargs["eos_token"] = getattr(tokenizer, "eos_token", None)
+    if tokenizer is not None and _constructor_accepts(sft_config_cls, "pad_token"):
+        kwargs["pad_token"] = getattr(tokenizer, "pad_token", None)
     return sft_config_cls(**kwargs)
 
 

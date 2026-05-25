@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
+import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Mapping
@@ -22,6 +24,10 @@ class ProviderProbeResult:
     account_creation_automation: bool = False
     quota_bypass_attempt: bool = False
     idle_bypass_attempt: bool = False
+    gpu_required: bool = False
+    gpu_available: bool = False
+    gpu_name: str = ""
+    gpu_probe_error: str = ""
 
     @property
     def is_usable(self) -> bool:
@@ -33,6 +39,7 @@ class ProviderProbeResult:
             and not self.account_creation_automation
             and not self.quota_bypass_attempt
             and not self.idle_bypass_attempt
+            and (not self.gpu_required or self.gpu_available)
             and not self.blocked_reason
         )
 
@@ -58,6 +65,7 @@ def probe_from_environment(
     cloud_root: str,
     *,
     provider: str | None = None,
+    require_gpu: bool = False,
 ) -> ProviderProbeResult:
     detected_provider = provider or _detect_provider(env)
     if not cloud_root:
@@ -76,6 +84,7 @@ def probe_from_environment(
     quota_bypass_attempt = env.get("QUOTA_BYPASS_ATTEMPT") == "1"
     idle_bypass_attempt = env.get("IDLE_BYPASS_ATTEMPT") == "1"
     cloud_ready = root.exists()
+    gpu_available, gpu_name, gpu_probe_error = _probe_nvidia_gpu()
     blocked_reason = ""
     if paid_risk:
         blocked_reason = "paid provider configuration is forbidden"
@@ -87,6 +96,10 @@ def probe_from_environment(
         blocked_reason = "quota bypass attempts are forbidden"
     elif idle_bypass_attempt:
         blocked_reason = "idle bypass attempts are forbidden"
+    elif require_gpu and not gpu_available:
+        blocked_reason = (
+            "CUDA GPU is required for Qwen2.5-7B QLoRA training and inference"
+        )
 
     return ProviderProbeResult(
         provider=detected_provider,
@@ -98,6 +111,10 @@ def probe_from_environment(
         account_creation_automation=account_creation_automation,
         quota_bypass_attempt=quota_bypass_attempt,
         idle_bypass_attempt=idle_bypass_attempt,
+        gpu_required=require_gpu,
+        gpu_available=gpu_available,
+        gpu_name=gpu_name,
+        gpu_probe_error=gpu_probe_error,
     )
 
 
@@ -123,12 +140,33 @@ def _detect_provider(env: Mapping[str, str]) -> str:
         return "colab"
     return "local"
 
+def _probe_nvidia_gpu() -> tuple[bool, str, str]:
+    if shutil.which("nvidia-smi") is None:
+        return False, "", "nvidia-smi is not available"
+    result = subprocess.run(
+        [
+            "nvidia-smi",
+            "--query-gpu=name",
+            "--format=csv,noheader",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return False, "", (result.stderr or result.stdout).strip()[-500:]
+    gpu_names = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not gpu_names:
+        return False, "", "nvidia-smi returned no GPU names"
+    return True, gpu_names[0], ""
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Probe free/trial cloud provider readiness.")
     parser.add_argument("--cloud-root", default="")
     parser.add_argument("--provider", default=None)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--require-gpu", action="store_true")
     parser.add_argument("--allow-tmp", action="store_true")
     args = parser.parse_args()
 
@@ -146,6 +184,7 @@ def main() -> int:
         os.environ,
         args.cloud_root,
         provider=args.provider,
+        require_gpu=args.require_gpu,
     )
     payload = write_platform_status(args.report, result)
     print(

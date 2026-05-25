@@ -51,6 +51,23 @@ def test_probe_from_environment_blocks_account_creation_automation(
     assert result.account_creation_automation is True
     assert result.blocked_reason == "account creation automation is forbidden"
 
+def test_probe_from_environment_blocks_colab_without_required_gpu(
+    tmp_path: Path,
+) -> None:
+    result = probe_from_environment(
+        {"HOME": "/root", "PATH": ""},
+        cloud_root=str(tmp_path),
+        provider="colab",
+        require_gpu=True,
+    )
+
+    assert result.is_usable is False
+    assert result.gpu_required is True
+    assert result.gpu_available is False
+    assert result.blocked_reason == (
+        "CUDA GPU is required for Qwen2.5-7B QLoRA training and inference"
+    )
+
 def test_provider_probe_cli_requires_cloud_report_path(tmp_path: Path) -> None:
     cloud_root = tmp_path / "cloud"
     cloud_root.mkdir()
