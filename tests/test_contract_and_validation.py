@@ -1,3 +1,4 @@
+import builtins
 import hashlib
 import json
 import os
@@ -1418,6 +1419,51 @@ def test_train_unsloth_writes_blocked_report_for_runtime_failure(
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["status"] == "blocked"
     assert "torch" in report["reason"]
+
+
+def test_train_unsloth_reports_interactive_prompt_before_eof(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import train_unsloth_qlora
+
+    cloud_root = tmp_path / "cloud"
+    train_path = cloud_root / "data/splits/train.jsonl"
+    val_path = cloud_root / "data/splits/val.jsonl"
+    report_path = cloud_root / "reports/training_report.json"
+    train_path.parent.mkdir(parents=True)
+    _write_jsonl(train_path, [_example({"intent": "stop"})])
+    _write_jsonl(val_path, [_example({"intent": "get_pose"})])
+
+    def prompt_for_login(**_: object) -> None:
+        builtins.input("wandb login prompt")
+
+    monkeypatch.setattr(train_unsloth_qlora, "_train", prompt_for_login)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "train_unsloth_qlora.py",
+            "--train",
+            str(train_path),
+            "--val",
+            str(val_path),
+            "--output-dir",
+            str(cloud_root / "models/adapter"),
+            "--report",
+            str(report_path),
+            "--cloud-root",
+            str(cloud_root),
+            "--allow-tmp",
+        ],
+    )
+
+    assert train_unsloth_qlora.main() == 1
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["status"] == "blocked"
+    assert report["reason"] == (
+        "RuntimeError: interactive prompt blocked during non-interactive "
+        "training: wandb login prompt"
+    )
 
 
 def test_train_unsloth_blocks_when_adapter_files_are_missing(

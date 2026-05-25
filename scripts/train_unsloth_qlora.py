@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import builtins
+from contextlib import contextmanager
 import inspect
 import multiprocessing
 import os
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from cloud_runtime import (
     CloudPathError,
@@ -23,6 +25,18 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC_PATH = ROOT / "configs/dataset_spec.yaml"
 QWEN_EOS_TOKEN_CANDIDATES = ("<|im_end|>", "<|endoftext|>")
 QWEN_PAD_TOKEN_CANDIDATES = ("<|PAD_TOKEN|>", "<|endoftext|>")
+NON_INTERACTIVE_TRAINING_ENV = {
+    "WANDB_DISABLED": "true",
+    "WANDB_MODE": "disabled",
+    "WANDB_SILENT": "true",
+    "WANDB_CONSOLE": "off",
+    "HF_HUB_DISABLE_TELEMETRY": "1",
+    "HF_HUB_DISABLE_PROGRESS_BARS": "1",
+    "TRANSFORMERS_NO_ADVISORY_WARNINGS": "1",
+    "TOKENIZERS_PARALLELISM": "false",
+    "BITSANDBYTES_NOWELCOME": "1",
+    "TQDM_DISABLE": "1",
+}
 
 
 def main() -> int:
@@ -97,16 +111,18 @@ def main() -> int:
         return 0
 
     try:
-        _train(
-            train_path=args.train,
-            val_path=args.val,
-            output_dir=args.output_dir,
-            model_name=args.model_name,
-            training=training,
-            report_path=args.report,
-            report=report,
-            resume_from_adapter=args.resume_from_adapter,
-        )
+        _configure_non_interactive_training_env()
+        with _non_interactive_input_guard():
+            _train(
+                train_path=args.train,
+                val_path=args.val,
+                output_dir=args.output_dir,
+                model_name=args.model_name,
+                training=training,
+                report_path=args.report,
+                report=report,
+                resume_from_adapter=args.resume_from_adapter,
+            )
     except Exception as exc:
         report["status"] = "blocked"
         report["passed"] = False
@@ -141,6 +157,30 @@ def _training_config(spec: dict[str, Any], *, max_steps: int | None) -> dict[str
         "save_steps": 25,
         "seed": 3407,
     }
+
+
+def _configure_non_interactive_training_env() -> dict[str, str]:
+    for key, value in NON_INTERACTIVE_TRAINING_ENV.items():
+        os.environ[key] = value
+    return dict(NON_INTERACTIVE_TRAINING_ENV)
+
+
+@contextmanager
+def _non_interactive_input_guard() -> Iterator[None]:
+    original_input = builtins.input
+
+    def blocked_input(prompt: object = "") -> str:
+        prompt_text = str(prompt).strip()
+        reason = "interactive prompt blocked during non-interactive training"
+        if prompt_text:
+            reason = f"{reason}: {prompt_text}"
+        raise RuntimeError(reason)
+
+    builtins.input = blocked_input
+    try:
+        yield
+    finally:
+        builtins.input = original_input
 
 
 def _configure_tokenizer_special_tokens(tokenizer: Any) -> None:
@@ -198,6 +238,8 @@ def _train(
     report: dict[str, Any],
     resume_from_adapter: Path | None,
 ) -> None:
+    _configure_non_interactive_training_env()
+
     import torch
 
     if not torch.cuda.is_available():

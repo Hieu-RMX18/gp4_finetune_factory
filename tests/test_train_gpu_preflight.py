@@ -1,4 +1,5 @@
 import builtins
+import os
 import sys
 import types
 from pathlib import Path
@@ -9,6 +10,20 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import train_unsloth_qlora
+
+
+def test_train_configures_non_interactive_telemetry_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for key in train_unsloth_qlora.NON_INTERACTIVE_TRAINING_ENV:
+        monkeypatch.delenv(key, raising=False)
+
+    train_unsloth_qlora._configure_non_interactive_training_env()
+
+    assert os.environ["WANDB_DISABLED"] == "true"
+    assert os.environ["WANDB_MODE"] == "disabled"
+    assert os.environ["HF_HUB_DISABLE_TELEMETRY"] == "1"
+    assert os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] == "1"
 
 
 def test_train_checks_cuda_before_importing_training_stack(
