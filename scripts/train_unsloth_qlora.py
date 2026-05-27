@@ -50,6 +50,7 @@ def main() -> int:
     parser.add_argument("--model-name", default="Qwen/Qwen2.5-7B-Instruct")
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--resume-from-adapter", type=Path)
+    parser.add_argument("--resume-from-checkpoint", type=Path)
     parser.add_argument("--cloud-root", type=Path)
     parser.add_argument("--allow-tmp", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -74,6 +75,11 @@ def main() -> int:
                 cloud_root=args.cloud_root,
                 allow_tmp=args.allow_tmp,
             )
+            _validate_resume_checkpoint(
+                args.resume_from_checkpoint,
+                cloud_root=args.cloud_root,
+                allow_tmp=args.allow_tmp,
+            )
         except CloudPathError as exc:
             if _can_write_cloud_report(args.report, args.cloud_root, args.allow_tmp):
                 write_json(args.report, {"status": "blocked", "reason": str(exc)})
@@ -88,6 +94,13 @@ def main() -> int:
         args.resume_from_adapter,
         cloud_root=args.cloud_root,
         allow_tmp=args.allow_tmp,
+    )
+    resume_metadata.update(
+        _resume_checkpoint_metadata(
+            args.resume_from_checkpoint,
+            cloud_root=args.cloud_root,
+            allow_tmp=args.allow_tmp,
+        )
     )
 
     report = {
@@ -122,6 +135,7 @@ def main() -> int:
                 report_path=args.report,
                 report=report,
                 resume_from_adapter=args.resume_from_adapter,
+                resume_from_checkpoint=args.resume_from_checkpoint,
             )
     except Exception as exc:
         report["status"] = "blocked"
@@ -149,13 +163,19 @@ def _training_config(spec: dict[str, Any], *, max_steps: int | None) -> dict[str
         "alpha": int(lora["alpha"]),
         "dropout": float(lora["dropout"]),
         "max_seq_length": int(lora["max_seq_length"]),
-        "max_steps": int(max_steps or lora["pilot_max_steps"]),
+        "max_steps": int(max_steps) if max_steps is not None else -1,
+        "num_train_epochs": 1.0,
         "per_device_train_batch_size": 2,
         "gradient_accumulation_steps": 4,
         "learning_rate": 2e-4,
+        "warmup_ratio": 0.03,
+        "weight_decay": 0.01,
+        "lr_scheduler_type": "cosine",
         "logging_steps": 5,
-        "save_steps": 25,
-        "seed": 3407,
+        "eval_steps": 250,
+        "save_steps": 250,
+        "save_total_limit": 3,
+        "seed": 3526,
     }
 
 
@@ -237,6 +257,7 @@ def _train(
     report_path: Path,
     report: dict[str, Any],
     resume_from_adapter: Path | None,
+    resume_from_checkpoint: Path | None,
 ) -> None:
     _configure_non_interactive_training_env()
 
@@ -297,7 +318,11 @@ def _train(
         training=training,
     )
 
-    train_result = trainer.train()
+    train_result = trainer.train(
+        resume_from_checkpoint=(
+            str(resume_from_checkpoint) if resume_from_checkpoint is not None else None
+        )
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(str(output_dir))
     tokenizer.save_pretrained(str(output_dir))
@@ -369,12 +394,23 @@ def _build_sft_config(
 ) -> Any:
     kwargs: dict[str, Any] = {
         "output_dir": str(output_dir),
-        "max_steps": training["max_steps"],
+        "max_steps": training.get("max_steps", -1),
+        "num_train_epochs": training.get("num_train_epochs", 1.0),
         "per_device_train_batch_size": training["per_device_train_batch_size"],
         "gradient_accumulation_steps": training["gradient_accumulation_steps"],
         "learning_rate": training["learning_rate"],
+        "warmup_ratio": training.get("warmup_ratio", 0.03),
+        "weight_decay": training.get("weight_decay", 0.01),
+        "lr_scheduler_type": training.get("lr_scheduler_type", "cosine"),
         "logging_steps": training["logging_steps"],
         "save_steps": training["save_steps"],
+        "eval_strategy": "steps",
+        "eval_steps": training.get("eval_steps", training["save_steps"]),
+        "save_strategy": "steps",
+        "save_total_limit": training.get("save_total_limit", 3),
+        "load_best_model_at_end": True,
+        "metric_for_best_model": "eval_loss",
+        "greater_is_better": False,
         "seed": training["seed"],
         "optim": "adamw_8bit",
         "fp16": True,
@@ -429,6 +465,27 @@ def _validate_resume_adapter(
             f"resume adapter artifact files are missing: {resume_from_adapter}"
         )
 
+def _validate_resume_checkpoint(
+    resume_from_checkpoint: Path | None,
+    *,
+    cloud_root: Path | None,
+    allow_tmp: bool,
+) -> None:
+    if resume_from_checkpoint is None:
+        return
+    if cloud_root is None:
+        raise CloudPathError("CLOUD_ROOT is required when resuming a checkpoint.")
+    policy = CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=allow_tmp)
+    if not is_allowed_cloud_path(resume_from_checkpoint, policy):
+        raise CloudPathError(
+            "resume checkpoint path is outside approved cloud storage: "
+            f"{resume_from_checkpoint}"
+        )
+    if not resume_from_checkpoint.is_dir():
+        raise CloudPathError(
+            f"resume checkpoint directory is missing: {resume_from_checkpoint}"
+        )
+
 def _resume_adapter_metadata(
     resume_from_adapter: Path | None,
     *,
@@ -455,6 +512,32 @@ def _resume_adapter_metadata(
         "resume_from_adapter_artifact_exists": adapter_artifact_exists(
             resume_from_adapter
         ),
+    }
+
+def _resume_checkpoint_metadata(
+    resume_from_checkpoint: Path | None,
+    *,
+    cloud_root: Path | None,
+    allow_tmp: bool,
+) -> dict[str, Any]:
+    if resume_from_checkpoint is None:
+        return {
+            "resume_from_checkpoint": "",
+            "resume_from_checkpoint_allowed_cloud_path": False,
+            "resume_from_checkpoint_exists": False,
+        }
+    policy = (
+        CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=allow_tmp)
+        if cloud_root is not None
+        else CloudStoragePolicy((), allow_tmp=allow_tmp)
+    )
+    return {
+        "resume_from_checkpoint": str(resume_from_checkpoint),
+        "resume_from_checkpoint_allowed_cloud_path": is_allowed_cloud_path(
+            resume_from_checkpoint,
+            policy,
+        ),
+        "resume_from_checkpoint_exists": resume_from_checkpoint.is_dir(),
     }
 
 def _can_write_cloud_report(

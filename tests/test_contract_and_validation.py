@@ -1231,13 +1231,19 @@ def test_train_unsloth_builds_sft_trainer_from_chat_text_rows(tmp_path: Path) ->
 
     training = {
         "max_seq_length": 2048,
-        "max_steps": 100,
+        "max_steps": -1,
+        "num_train_epochs": 1.0,
         "per_device_train_batch_size": 2,
         "gradient_accumulation_steps": 4,
         "learning_rate": 2e-4,
+        "warmup_ratio": 0.03,
+        "weight_decay": 0.01,
+        "lr_scheduler_type": "cosine",
         "logging_steps": 5,
-        "save_steps": 25,
-        "seed": 3407,
+        "eval_steps": 250,
+        "save_steps": 250,
+        "save_total_limit": 3,
+        "seed": 3526,
     }
 
     trainer = train_unsloth_qlora._build_sft_trainer(
@@ -1254,6 +1260,16 @@ def test_train_unsloth_builds_sft_trainer_from_chat_text_rows(tmp_path: Path) ->
     assert isinstance(trainer, SFTTrainer)
     assert captured["config"]["output_dir"] == str(tmp_path / "adapter")
     assert captured["config"]["max_length"] == 2048
+    assert captured["config"]["num_train_epochs"] == 1.0
+    assert captured["config"]["max_steps"] == -1
+    assert captured["config"]["eval_strategy"] == "steps"
+    assert captured["config"]["save_strategy"] == "steps"
+    assert captured["config"]["eval_steps"] == 250
+    assert captured["config"]["save_steps"] == 250
+    assert captured["config"]["save_total_limit"] == 3
+    assert captured["config"]["load_best_model_at_end"] is True
+    assert captured["config"]["metric_for_best_model"] == "eval_loss"
+    assert captured["config"]["greater_is_better"] is False
     assert captured["config"]["packing"] is False
     assert captured["config"]["optim"] == "adamw_8bit"
     assert captured["trainer"]["processing_class"] == "tokenizer"
@@ -1272,13 +1288,19 @@ def test_train_unsloth_uses_fp16_not_bf16_for_colab_t4(tmp_path: Path) -> None:
 
     training = {
         "max_seq_length": 2048,
-        "max_steps": 100,
+        "max_steps": -1,
+        "num_train_epochs": 1.0,
         "per_device_train_batch_size": 2,
         "gradient_accumulation_steps": 4,
         "learning_rate": 2e-4,
+        "warmup_ratio": 0.03,
+        "weight_decay": 0.01,
+        "lr_scheduler_type": "cosine",
         "logging_steps": 5,
-        "save_steps": 25,
-        "seed": 3407,
+        "eval_steps": 250,
+        "save_steps": 250,
+        "save_total_limit": 3,
+        "seed": 3526,
     }
 
     train_unsloth_qlora._build_sft_config(

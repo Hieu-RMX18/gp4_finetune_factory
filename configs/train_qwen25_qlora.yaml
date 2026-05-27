@@ -21,3 +21,7 @@ storage:
   checkpoints: cloud_only
   adapter: cloud_only
   reports: cloud_only
+platform:
+  skip_provider_probe: true
+  allow_cross_account: true
+  ignore_drive_account_mismatch: true

@@ -16,14 +16,15 @@ from cloud_orchestrator import (
 )
 from check_cloud_storage_policy import CloudStoragePolicy
 from factory_common import write_json
+from provider_probe import ProviderProbeResult
 
 
 def test_cloud_split_ratio_keeps_fast_eval_holdout() -> None:
     test_ratio = 1 - CLOUD_TRAIN_RATIO - CLOUD_VAL_RATIO
 
-    assert CLOUD_TRAIN_RATIO == 0.998
-    assert CLOUD_VAL_RATIO == 0.001
-    assert int(50000 * test_ratio) == 50
+    assert CLOUD_TRAIN_RATIO == 0.90
+    assert CLOUD_VAL_RATIO == 0.05
+    assert round(300000 * test_ratio) == 15000
 
 def test_dedupe_waits_for_final_tiered_quality_gate() -> None:
     assert PREVIOUS_GATE_REPORTS["dedupe"] == "quality-gate-50k"
@@ -46,6 +47,7 @@ def test_v2_300k_phase_chain_is_ordered() -> None:
         "merge-accepted",
         "quality-gate-v2",
         "split",
+        "gpu-preflight",
         "train",
         "infer",
         "eval",
@@ -59,9 +61,51 @@ def test_v2_split_waits_for_quality_gate() -> None:
     from cloud_orchestrator import PREVIOUS_GATE_REPORTS
 
     assert PREVIOUS_GATE_REPORTS["split"] == "quality-gate-v2"
+    assert PREVIOUS_GATE_REPORTS["gpu-preflight"] == "split"
+    assert PREVIOUS_GATE_REPORTS["train"] == "gpu-preflight"
     assert PREVIOUS_GATE_REPORTS["local-install-manifest"] == "eval"
     assert PREVIOUS_GATE_REPORTS["package"] == "local-install-manifest"
     assert PREVIOUS_GATE_REPORTS["benchmark-report"] == "package"
+
+
+def test_orchestrator_writes_root_manifest_and_runtime_state(tmp_path: Path) -> None:
+    cloud_root = tmp_path / "cloud"
+    seed = tmp_path / "seed.jsonl"
+    seed.write_text("", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/cloud_orchestrator.py",
+            "--run-id",
+            "root-state",
+            "--cloud-root",
+            str(cloud_root),
+            "--seed",
+            str(seed),
+            "--phases",
+            "cloud-setup",
+            "--dry-run",
+            "--allow-tmp",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    root_manifest = json.loads(
+        (cloud_root / "run_manifest.json").read_text(encoding="utf-8")
+    )
+    runtime_state = json.loads(
+        (cloud_root / "runtime_state.json").read_text(encoding="utf-8")
+    )
+    assert root_manifest["run_id"] == "root-state"
+    assert root_manifest["phases"][0]["name"] == "cloud-setup"
+    assert runtime_state["run_id"] == "root-state"
+    assert runtime_state["last_phase"] == "cloud-setup"
+    assert runtime_state["status"] == "passed"
 
 
 def test_benchmark_report_phase_uses_full_v2_evidence_set(
@@ -231,6 +275,9 @@ def test_v2_split_reads_accepted_300k_dataset(
     command = captured["command"]
     assert str(cloud_root / "data/validated/accepted_300k.jsonl") in command
     assert str(cloud_root / "data/validated/accepted.jsonl") not in command
+    assert command[command.index("--seed") + 1] == "3526"
+    assert command[command.index("--train-ratio") + 1] == "0.9"
+    assert command[command.index("--val-ratio") + 1] == "0.05"
 
 
 def test_train_phase_passes_previous_adapter_to_training_script(
@@ -241,7 +288,7 @@ def test_train_phase_passes_previous_adapter_to_training_script(
     run_id = "train-resume"
     reports_dir = cloud_root / "reports"
     reports_dir.mkdir(parents=True)
-    write_json(reports_dir / f"split_{run_id}.json", {"passed": True})
+    write_json(reports_dir / f"gpu-preflight_{run_id}.json", {"passed": True})
     previous_adapter = cloud_root.parent / "previous/models/qwen25_gp4_lora"
     previous_adapter.mkdir(parents=True)
     captured: dict[str, list[str]] = {}
@@ -273,6 +320,61 @@ def test_train_phase_passes_previous_adapter_to_training_script(
     command = captured["command"]
     assert "--resume-from-adapter" in command
     assert command[command.index("--resume-from-adapter") + 1] == str(previous_adapter)
+
+
+def test_gpu_preflight_requires_cuda_and_updates_final_platform_status(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "gpu-preflight"
+    reports_dir = cloud_root / "reports"
+    reports_dir.mkdir(parents=True)
+    write_json(reports_dir / f"split_{run_id}.json", {"passed": True})
+    calls: list[bool] = []
+
+    def fake_probe(env, cloud_root_value, *, provider=None, require_gpu=False):
+        calls.append(require_gpu)
+        return ProviderProbeResult(
+            provider="colab",
+            available=True,
+            cloud_storage_ready=True,
+            free_tier=True,
+            paid_risk=False,
+            blocked_reason="",
+            gpu_required=require_gpu,
+            gpu_available=require_gpu,
+            gpu_name="Tesla T4",
+        )
+
+    monkeypatch.setattr("provider_probe.probe_from_environment", fake_probe)
+
+    result = _run_cloud_phase(
+        "gpu-preflight",
+        {
+            "run_id": run_id,
+            "cloud_root": cloud_root,
+            "reports_dir": reports_dir,
+            "seed": Path("data/seed/gp4_seed_starter.jsonl"),
+            "policy": CloudStoragePolicy((cloud_root,), allow_tmp=True),
+            "provider": None,
+            "source_plan": None,
+            "dry_run": False,
+            "allow_tmp": True,
+            "old_datasets": [],
+        },
+    )
+
+    assert result["status"] == "passed"
+    assert calls == [True]
+    phase_report = json.loads(Path(result["report"]).read_text(encoding="utf-8"))
+    final_status = json.loads(
+        (reports_dir / f"platform_status_{run_id}.json").read_text(encoding="utf-8")
+    )
+    assert phase_report["gpu_required"] is True
+    assert phase_report["gpu_available"] is True
+    assert final_status["gpu_required"] is True
+    assert final_status["gpu_available"] is True
 
 
 def test_v2_300k_preset_requires_previous_adapter(tmp_path: Path) -> None:
@@ -636,6 +738,7 @@ def test_orchestrator_full_cloud_phase_dry_run_has_no_unknown_phases(
         "quality-gate-50k",
         "dedupe",
         "split",
+        "gpu-preflight",
         "train",
         "infer",
         "eval",

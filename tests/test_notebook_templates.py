@@ -153,14 +153,14 @@ def test_colab_notebook_explains_drive_mount_consent_failure() -> None:
     assert "mount_google_drive_or_explain()" in setup_source
 
 
-def test_colab_notebook_requests_gpu_runtime() -> None:
+def test_colab_notebook_starts_without_gpu_runtime() -> None:
     notebook = json.loads(
         (ROOT / "notebooks/colab_gp4_react_qwen25_qlora.ipynb").read_text(
             encoding="utf-8"
         )
     )
 
-    assert notebook["metadata"]["accelerator"] == "GPU"
+    assert notebook["metadata"].get("accelerator") in {None, "none"}
 
 
 def test_cloud_notebooks_name_final_benchmark_and_audit_artifacts() -> None:
@@ -249,7 +249,8 @@ def test_colab_notebook_writes_failure_reports_for_subprocess_steps() -> None:
     assert "subprocess.CalledProcessError" in setup_source
     assert "run_checked('pip-install'" in pip_source
     assert "run_checked('provider-probe'" in provider_source
-    assert "'--require-gpu'" in provider_source
+    assert "'--require-gpu'" not in provider_source
+    assert "gpu-preflight" in orchestrator_source or "--preset', 'v2-300k'" in orchestrator_source
     assert "run_checked('colab-readiness', readiness_command)" in orchestrator_source
     assert "run_checked('cloud-orchestrator', orchestrator_command)" in orchestrator_source
     assert "run_checked('completion-audit'" in audit_source

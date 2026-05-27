@@ -22,9 +22,9 @@ def main() -> int:
     parser.add_argument("--report", type=Path)
     parser.add_argument("--cloud-root", type=Path)
     parser.add_argument("--allow-tmp", action="store_true")
-    parser.add_argument("--seed", type=int, default=20260515)
-    parser.add_argument("--train-ratio", type=float, default=0.80)
-    parser.add_argument("--val-ratio", type=float, default=0.10)
+    parser.add_argument("--seed", type=int, default=3526)
+    parser.add_argument("--train-ratio", type=float, default=0.90)
+    parser.add_argument("--val-ratio", type=float, default=0.05)
     args = parser.parse_args()
 
     outputs = [
@@ -92,6 +92,10 @@ def main() -> int:
                 "train": len(train_rows),
                 "validation": len(val_rows),
                 "test": len(test_rows),
+                "seed": args.seed,
+                "train_ratio": args.train_ratio,
+                "val_ratio": args.val_ratio,
+                "test_ratio": 1 - args.train_ratio - args.val_ratio,
                 "locked_eval_contamination": 0,
                 "passed": True,
             },

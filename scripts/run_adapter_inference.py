@@ -32,6 +32,7 @@ def main() -> int:
     parser.add_argument("--cloud-root", type=Path)
     parser.add_argument("--allow-tmp", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--deterministic-typo-baseline", action="store_true")
     args = parser.parse_args()
 
     if not args.dry_run:
@@ -81,6 +82,7 @@ def main() -> int:
             adapter_dir=args.adapter_dir,
             max_seq_length=args.max_seq_length,
             max_new_tokens=args.max_new_tokens,
+            deterministic_typo_baseline=args.deterministic_typo_baseline,
         )
     except (ModuleNotFoundError, RuntimeError) as exc:
         report["status"] = "blocked"
@@ -107,6 +109,7 @@ def _run_inference(
     adapter_dir: Path,
     max_seq_length: int,
     max_new_tokens: int,
+    deterministic_typo_baseline: bool = False,
 ) -> list[dict[str, Any]]:
     import torch
     from unsloth import FastLanguageModel
@@ -123,7 +126,9 @@ def _run_inference(
 
     output_rows: list[dict[str, Any]] = []
     for row in rows:
-        deterministic_output = deterministic_typo_model_output(row)
+        deterministic_output = (
+            deterministic_typo_model_output(row) if deterministic_typo_baseline else None
+        )
         if deterministic_output is not None:
             output_rows.append(
                 {

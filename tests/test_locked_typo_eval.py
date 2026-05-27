@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+import types
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,3 +73,73 @@ def test_inference_uses_deterministic_typo_policy_for_known_down_typos() -> None
         '{"intent":"move_relative","delta":{"x":0.0,"y":0.0,"z":-7.0},'
         '"linear_unit":"cm","reference_frame":"base_link"}'
     )
+
+
+def test_inference_does_not_use_typo_baseline_unless_requested(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    import run_adapter_inference
+
+    class InputIds:
+        shape = (1, 1)
+
+        def to(self, device: str) -> "InputIds":
+            return self
+
+    class Tokenizer:
+        eos_token_id = 0
+
+        def apply_chat_template(self, messages, **kwargs):
+            assert [message["role"] for message in messages] == ["system", "user"]
+            return InputIds()
+
+        def decode(self, tokens, *, skip_special_tokens: bool) -> str:
+            assert skip_special_tokens is True
+            return '{"intent":"model_path"}'
+
+    class Model:
+        device = "cuda"
+
+        def generate(self, **kwargs):
+            return [[0, 1]]
+
+    class FastLanguageModel:
+        @staticmethod
+        def from_pretrained(**kwargs):
+            return Model(), Tokenizer()
+
+        @staticmethod
+        def for_inference(model) -> None:
+            return None
+
+    monkeypatch.setitem(
+        sys.modules,
+        "torch",
+        types.SimpleNamespace(cuda=types.SimpleNamespace(is_available=lambda: True)),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "unsloth",
+        types.SimpleNamespace(FastLanguageModel=FastLanguageModel),
+    )
+
+    row = {
+        "id": "gp4_vi_typo_policy_001",
+        "messages": [
+            {"role": "system", "content": "GP4 safety Semantic IR system prompt"},
+            {"role": "user", "content": "di xuông 7 cm trong base_link"},
+            {"role": "assistant", "content": "{}"},
+        ],
+        "expected_json": {"intent": "move_relative"},
+    }
+
+    output_rows = run_adapter_inference._run_inference(
+        rows=[row],
+        adapter_dir=tmp_path / "adapter",
+        max_seq_length=2048,
+        max_new_tokens=256,
+        deterministic_typo_baseline=False,
+    )
+
+    assert output_rows[0]["model_output"] == '{"intent":"model_path"}'

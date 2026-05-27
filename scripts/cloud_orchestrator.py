@@ -46,7 +46,8 @@ PREVIOUS_GATE_REPORTS = {
     "quality-gate": "generate",
     "dedupe": "quality-gate-50k",
     "split": "quality-gate-v2",
-    "train": "split",
+    "gpu-preflight": "split",
+    "train": "gpu-preflight",
     "infer": "train",
     "eval": "infer",
     "package": "local-install-manifest",
@@ -83,6 +84,7 @@ V2_300K_PHASES = [
     "merge-accepted",
     "quality-gate-v2",
     "split",
+    "gpu-preflight",
     "train",
     "infer",
     "eval",
@@ -99,8 +101,9 @@ GENERATION_COUNTS = {
     "generate-100k": 100000,
     "generate": 50,
 }
-CLOUD_TRAIN_RATIO = 0.998
-CLOUD_VAL_RATIO = 0.001
+CLOUD_TRAIN_RATIO = 0.90
+CLOUD_VAL_RATIO = 0.05
+CLOUD_SEED = 3526
 
 
 def main() -> int:
@@ -176,8 +179,9 @@ def main() -> int:
         else:
             phase_result = _run_cloud_phase(phase, context)
             phase_results.append(phase_result)
-            if phase_result["status"] in {"failed", "blocked"}:
-                break
+        _write_runtime_state(args.cloud_root, args.run_id, phase_results)
+        if not args.dry_run and phase_results[-1]["status"] in {"failed", "blocked"}:
+            break
 
     manifest = {
         "run_id": args.run_id,
@@ -186,6 +190,8 @@ def main() -> int:
         "phases": phase_results,
     }
     write_json(manifest_path, manifest)
+    write_json(args.cloud_root / "run_manifest.json", manifest)
+    _write_runtime_state(args.cloud_root, args.run_id, phase_results)
     failed = any(result["status"] in {"failed", "blocked"} for result in phase_results)
     print(f"run_id={args.run_id} dry_run={args.dry_run} failed={failed} manifest={manifest_path}")
     return 1 if failed else 0
@@ -228,6 +234,46 @@ def _validate_previous_adapter_path(
         )
 
 
+def _write_runtime_state(
+    cloud_root: Path,
+    run_id: str,
+    phase_results: list[dict[str, Any]],
+) -> None:
+    last_phase = phase_results[-1] if phase_results else {}
+    blocked = [
+        result
+        for result in phase_results
+        if result.get("status") in {"failed", "blocked"}
+    ]
+    write_json(
+        cloud_root / "runtime_state.json",
+        {
+            "run_id": run_id,
+            "last_phase": last_phase.get("name", ""),
+            "status": last_phase.get("status", "not_started"),
+            "blocked": bool(blocked),
+            "blocked_phase": blocked[-1].get("name", "") if blocked else "",
+            "phase_count": len(phase_results),
+            "phases": phase_results,
+        },
+    )
+
+def _latest_checkpoint(adapter_dir: Path) -> Path | None:
+    if not adapter_dir.exists():
+        return None
+    checkpoints: list[tuple[int, Path]] = []
+    for path in adapter_dir.glob("checkpoint-*"):
+        if not path.is_dir():
+            continue
+        try:
+            step = int(path.name.rsplit("-", 1)[1])
+        except (IndexError, ValueError):
+            continue
+        checkpoints.append((step, path))
+    if not checkpoints:
+        return None
+    return max(checkpoints, key=lambda item: item[0])[1]
+
 def _run_cloud_phase(phase: str, context: dict[str, Any]) -> dict[str, Any]:
     cloud_root: Path = require_cloud_root(
         context["cloud_root"],
@@ -250,7 +296,7 @@ def _run_cloud_phase(phase: str, context: dict[str, Any]) -> dict[str, Any]:
 
     if phase in {"cloud-setup", "setup"}:
         return _run_cloud_setup(phase, context)
-    if phase == "provider-probe":
+    if phase in {"provider-probe", "gpu-preflight"}:
         return _run_cloud_provider_probe(phase, context)
     if phase == "contract":
         return _run_contract_manifest(phase, context)
@@ -305,6 +351,8 @@ def _run_cloud_phase(phase: str, context: dict[str, Any]) -> dict[str, Any]:
             str(cloud_root),
             "--locked-eval",
             str(locked_eval),
+            "--seed",
+            str(CLOUD_SEED),
             "--train-ratio",
             str(CLOUD_TRAIN_RATIO),
             "--val-ratio",
@@ -325,6 +373,9 @@ def _run_cloud_phase(phase: str, context: dict[str, Any]) -> dict[str, Any]:
             "--cloud-root",
             str(cloud_root),
         ]
+        checkpoint = _latest_checkpoint(cloud_root / "models/qwen25_gp4_lora")
+        if checkpoint is not None:
+            command.extend(["--resume-from-checkpoint", str(checkpoint)])
         previous_adapter: Path | None = context.get("previous_adapter")
         if previous_adapter is not None:
             command.extend(["--resume-from-adapter", str(previous_adapter)])
@@ -408,10 +459,12 @@ def _run_cloud_provider_probe(phase: str, context: dict[str, Any]) -> dict[str, 
     from provider_probe import probe_from_environment
 
     cloud_root: Path = context["cloud_root"]
+    require_gpu = phase == "gpu-preflight"
     result = probe_from_environment(
         os.environ,
         str(cloud_root),
         provider=context.get("provider"),
+        require_gpu=require_gpu,
     )
     report_path = phase_report_path(cloud_root, str(context["run_id"]), phase)
     write_platform_status(report_path, result)
@@ -1096,8 +1149,19 @@ def _run_dry_phase(phase: str, context: dict[str, Any]) -> dict[str, Any]:
         write_json(report, {"passed": True, "dry_run": True})
         return {"name": phase, "status": "passed", "report": str(report)}
 
-    if phase == "provider-probe":
-        result = ProviderProbeResult("dry-run", True, True, True, False, "")
+    if phase in {"provider-probe", "gpu-preflight"}:
+        require_gpu = phase == "gpu-preflight"
+        result = ProviderProbeResult(
+            "dry-run",
+            True,
+            True,
+            True,
+            False,
+            "",
+            gpu_required=require_gpu,
+            gpu_available=require_gpu,
+            gpu_name="dry-run-gpu" if require_gpu else "",
+        )
         report = reports_dir / f"platform_status_{run_id}.json"
         write_platform_status(report, result)
         return {"name": phase, "status": "passed", "report": str(report)}

@@ -746,6 +746,9 @@ def write_complete_cloud_evidence(
             "cloud_storage_ready": True,
             "free_tier": True,
             "paid_risk": False,
+            "gpu_required": True,
+            "gpu_available": True,
+            "gpu_name": "Tesla T4",
         },
     )
     write_json(
@@ -811,6 +814,9 @@ def test_cloud_completion_audit_passes_for_complete_cloud_run(
             "cloud_storage_ready": True,
             "free_tier": True,
             "paid_risk": False,
+            "gpu_required": True,
+            "gpu_available": True,
+            "gpu_name": "Tesla T4",
         },
     )
     write_json(
@@ -891,6 +897,8 @@ def test_cloud_completion_audit_passes_for_complete_cloud_run(
     assert observed["provider"]["cloud_storage_ready"] is True
     assert observed["provider"]["free_tier"] is True
     assert observed["provider"]["paid_risk"] is False
+    assert observed["provider"]["gpu_required"] is True
+    assert observed["provider"]["gpu_available"] is True
     assert observed["colab_readiness"]["passed"] is True
     assert observed["colab_readiness"]["old_dataset_rows"] == 1
     assert observed["colab_readiness"]["previous_adapter_artifact_exists"] is True
@@ -1334,6 +1342,8 @@ def test_cloud_completion_audit_rejects_unapproved_provider(
             "cloud_storage_ready": True,
             "free_tier": True,
             "paid_risk": False,
+            "gpu_required": True,
+            "gpu_available": True,
         },
     )
 
@@ -1364,6 +1374,8 @@ def test_cloud_completion_audit_rejects_paid_risk_provider(
             "cloud_storage_ready": True,
             "free_tier": False,
             "paid_risk": True,
+            "gpu_required": True,
+            "gpu_available": True,
         },
     )
 
@@ -1394,6 +1406,8 @@ def test_cloud_completion_audit_rejects_provider_without_cloud_storage(
             "cloud_storage_ready": False,
             "free_tier": True,
             "paid_risk": False,
+            "gpu_required": True,
+            "gpu_available": True,
         },
     )
 
@@ -1407,6 +1421,38 @@ def test_cloud_completion_audit_rejects_provider_without_cloud_storage(
 
     failed = {item["id"] for item in payload["checklist"] if not item["passed"]}
     assert "provider_cloud_storage_ready" in failed
+
+def test_cloud_completion_audit_rejects_provider_without_gpu_preflight(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "missing-gpu-preflight"
+    write_complete_cloud_evidence(
+        cloud_root,
+        run_id,
+        provider={
+            "passed": True,
+            "provider": "colab",
+            "is_usable": True,
+            "available": True,
+            "cloud_storage_ready": True,
+            "free_tier": True,
+            "paid_risk": False,
+            "gpu_required": False,
+            "gpu_available": False,
+        },
+    )
+
+    payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+        source_root=tmp_path / "source",
+    )
+
+    failed = {item["id"] for item in payload["checklist"] if not item["passed"]}
+    assert "provider_gpu_ready" in failed
 
 def test_cloud_completion_audit_rejects_provider_policy_bypass_flags(
     tmp_path: Path,
@@ -1427,6 +1473,8 @@ def test_cloud_completion_audit_rejects_provider_policy_bypass_flags(
             "account_creation_automation": True,
             "quota_bypass_attempt": True,
             "idle_bypass_attempt": True,
+            "gpu_required": True,
+            "gpu_available": True,
         },
     )
 
@@ -2412,7 +2460,17 @@ def test_cloud_completion_audit_fails_when_any_manifest_phase_blocked(
     phases = list(REQUIRED_PHASES)
     write_json(
         cloud_root / "reports" / f"platform_status_{run_id}.json",
-        {"passed": True, "provider": "colab", "is_usable": True},
+        {
+            "passed": True,
+            "provider": "colab",
+            "is_usable": True,
+            "available": True,
+            "cloud_storage_ready": True,
+            "free_tier": True,
+            "paid_risk": False,
+            "gpu_required": True,
+            "gpu_available": True,
+        },
     )
     write_json(
         cloud_root / "reports" / f"run_manifest_{run_id}.json",
@@ -2477,7 +2535,17 @@ def test_cloud_completion_audit_requires_50k_generation_gate(
     phases = [phase for phase in REQUIRED_PHASES if phase != "generate-v2"]
     write_json(
         cloud_root / "reports" / f"platform_status_{run_id}.json",
-        {"passed": True, "provider": "colab", "is_usable": True},
+        {
+            "passed": True,
+            "provider": "colab",
+            "is_usable": True,
+            "available": True,
+            "cloud_storage_ready": True,
+            "free_tier": True,
+            "paid_risk": False,
+            "gpu_required": True,
+            "gpu_available": True,
+        },
     )
     write_json(
         cloud_root / "reports" / f"run_manifest_{run_id}.json",
@@ -2526,7 +2594,17 @@ def test_cloud_completion_audit_fails_when_source_tree_has_runtime_artifacts(
     phases = list(REQUIRED_PHASES)
     write_json(
         cloud_root / "reports" / f"platform_status_{run_id}.json",
-        {"passed": True, "provider": "colab", "is_usable": True},
+        {
+            "passed": True,
+            "provider": "colab",
+            "is_usable": True,
+            "available": True,
+            "cloud_storage_ready": True,
+            "free_tier": True,
+            "paid_risk": False,
+            "gpu_required": True,
+            "gpu_available": True,
+        },
     )
     write_json(
         cloud_root / "reports" / f"run_manifest_{run_id}.json",
@@ -2581,7 +2659,17 @@ def test_cloud_completion_audit_rejects_empty_adapter_directory(
     adapter_dir.mkdir(parents=True)
     write_json(
         cloud_root / "reports" / f"platform_status_{run_id}.json",
-        {"passed": True, "provider": "colab", "is_usable": True},
+        {
+            "passed": True,
+            "provider": "colab",
+            "is_usable": True,
+            "available": True,
+            "cloud_storage_ready": True,
+            "free_tier": True,
+            "paid_risk": False,
+            "gpu_required": True,
+            "gpu_available": True,
+        },
     )
     write_json(
         cloud_root / "reports" / f"run_manifest_{run_id}.json",

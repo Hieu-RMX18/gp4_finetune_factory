@@ -52,6 +52,7 @@ REQUIRED_PHASES = (
     "merge-accepted",
     "quality-gate-v2",
     "split",
+    "gpu-preflight",
     "train",
     "infer",
     "eval",
@@ -181,6 +182,12 @@ def audit_completion(
             "provider_cloud_storage_ready",
             provider.get("available") is True and provider.get("cloud_storage_ready") is True,
             "provider must be available with cloud storage mounted",
+            str(provider_path),
+        ),
+        _check(
+            "provider_gpu_ready",
+            provider.get("gpu_required") is True and provider.get("gpu_available") is True,
+            "final provider status must come from GPU preflight with CUDA available",
             str(provider_path),
         ),
         _check(
@@ -533,6 +540,9 @@ def _observed_summary(
             "is_usable": provider.get("is_usable"),
             "free_tier": provider.get("free_tier"),
             "paid_risk": provider.get("paid_risk"),
+            "gpu_required": provider.get("gpu_required"),
+            "gpu_available": provider.get("gpu_available"),
+            "gpu_name": provider.get("gpu_name"),
         },
         "eval_contract": {
             "report_path": str(eval_report_path),
