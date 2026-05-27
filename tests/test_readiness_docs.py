@@ -140,27 +140,20 @@ def test_colab_v2_300k_runbook_pins_drive_reuse_and_reports() -> None:
     assert "does not perform a local adapter install" in text
 
 
-def test_colab_v2_300k_runbook_source_commit_includes_hardened_gates() -> None:
+def test_colab_v2_300k_runbook_uses_current_pushed_source_commit() -> None:
     text = (ROOT / "docs/colab_v2_300k_runbook.md").read_text(encoding="utf-8")
-    match = re.search(r"Factory source commit: `([0-9a-f]{40})`", text)
 
-    assert match is not None
-
-    pinned_commit = match.group(1)
-    subprocess.run(
-        ["git", "cat-file", "-e", f"{pinned_commit}^{{commit}}"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    assert "Factory source commit: current pushed `codex/gp4-react-ir-cloud-workflow` branch head" in text
+    assert "git ls-remote origin refs/heads/codex/gp4-react-ir-cloud-workflow" in text
+    assert "GP4_FACTORY_SOURCE_EXPECTED_COMMIT=$(git ls-remote" in text
+    assert not re.search(r"GP4_FACTORY_SOURCE_EXPECTED_COMMIT=[0-9a-f]{40}", text)
     subprocess.run(
         [
             "git",
             "merge-base",
             "--is-ancestor",
             HARDENED_COLAB_READINESS_COMMIT,
-            pinned_commit,
+            "HEAD",
         ],
         cwd=ROOT,
         check=True,
