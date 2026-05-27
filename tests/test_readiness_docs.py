@@ -122,7 +122,7 @@ def test_colab_v2_300k_runbook_pins_drive_reuse_and_reports() -> None:
     assert "GP4_WS_EXPECTED_COMMIT" in text
     assert "GP4_FACTORY_SOURCE_EXPECTED_COMMIT" in text
     assert "ws-deep-rebuild-3526" in text
-    assert "3bbcb0726a4c3305c086c93e2b1e4a320471090b" in text
+    assert "33e0242159aaa07b591f5db25d5484dc285a7425" in text
     assert "export GP4_FACTORY_SOURCE_EXPECTED_COMMIT=" in text
     assert "benchmark_report_${RUN_ID}.html" in text
     assert "benchmark_report_${RUN_ID}.md" in text

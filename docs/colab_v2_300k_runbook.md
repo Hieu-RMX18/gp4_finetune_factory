@@ -10,7 +10,7 @@ Use this checkpoint when resuming the v2 300k fine-tune from Colab. Do not run t
 - Factory source commit: `75f2eec6beaf08ef8773d7d5b125355edbbaef93`
 - `GP4_FACTORY_SOURCE_EXPECTED_COMMIT=75f2eec6beaf08ef8773d7d5b125355edbbaef93`
 - `gp4_ws` branch: `ws-deep-rebuild-3526`
-- `GP4_WS_EXPECTED_COMMIT=3bbcb0726a4c3305c086c93e2b1e4a320471090b`
+- `GP4_WS_EXPECTED_COMMIT=33e0242159aaa07b591f5db25d5484dc285a7425`
 
 If `drive.mount('/content/drive')` opens a Google Drive permission tab and the
 setup cell reports `Google Drive mount failed`, stop at that prompt. Approve the Google Drive permission prompt, return to the notebook, and rerun the first setup cell.
@@ -44,7 +44,7 @@ export GP4_PREVIOUS_RUN_ID=<previous_run_id>
 export GP4_OLD_DATASET=/content/drive/MyDrive/gp4_finetune_factory/<previous_run_id>/data/validated/accepted_300k.jsonl
 export GP4_PREVIOUS_ADAPTER=/content/drive/MyDrive/gp4_finetune_factory/<previous_run_id>/models/qwen25_gp4_lora
 export GP4_FACTORY_SOURCE_EXPECTED_COMMIT=75f2eec6beaf08ef8773d7d5b125355edbbaef93
-export GP4_WS_EXPECTED_COMMIT=3bbcb0726a4c3305c086c93e2b1e4a320471090b
+export GP4_WS_EXPECTED_COMMIT=33e0242159aaa07b591f5db25d5484dc285a7425
 ```
 
 The notebook rejects `GP4_OLD_DATASET`, `GP4_PREVIOUS_ADAPTER`, and `GP4_WS` when they are outside the approved Google Drive roots. It rejects clone fallback or source bundles when the factory source commit does not match `GP4_FACTORY_SOURCE_EXPECTED_COMMIT`.
