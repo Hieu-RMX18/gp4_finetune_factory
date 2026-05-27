@@ -45,10 +45,20 @@ def main() -> int:
         print("quality_report_blocked reason=at least one --input-report is required")
         return 1
     outputs = [args.report]
+    compatibility_reports: list[tuple[str, Path]] = []
     if args.html_report:
         outputs.append(args.html_report)
+        if args.cloud_root:
+            compatibility_reports.append(
+                ("html", args.cloud_root / "reports/BENCHMARK_REPORT.html")
+            )
     if args.markdown_report:
         outputs.append(args.markdown_report)
+        if args.cloud_root:
+            compatibility_reports.append(
+                ("markdown", args.cloud_root / "reports/BENCHMARK_REPORT.md")
+            )
+    outputs.extend(path for _, path in compatibility_reports)
     try:
         validate_cloud_run_paths(
             cloud_root=args.cloud_root,
@@ -74,6 +84,11 @@ def main() -> int:
     if args.markdown_report:
         payload["markdown_report"] = str(args.markdown_report)
         write_markdown_report(args.markdown_report, payload)
+    for report_type, path in compatibility_reports:
+        if report_type == "html":
+            write_html_report(path, payload)
+        elif report_type == "markdown":
+            write_markdown_report(path, payload)
     write_json(args.report, payload)
     print(f"passed={payload['passed']} report={args.report}")
     return 0 if payload["passed"] else 1

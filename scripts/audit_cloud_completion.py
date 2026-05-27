@@ -375,6 +375,12 @@ def audit_completion(
             str(manifest_path),
         ),
         _check(
+            "plan_eval_artifacts_present",
+            _plan_eval_artifacts_present(cloud_root, policy),
+            "plan-required eval artifacts must exist under CLOUD_ROOT/eval",
+            str(cloud_root / "eval"),
+        ),
+        _check(
             "benchmark_report_visualized",
             _benchmark_report_visualized(manifest, policy),
             "benchmark-report phase must pass and reference an existing HTML "
@@ -570,6 +576,12 @@ def _observed_summary(
             "phase_report_path": str(benchmark_path) if benchmark_path else "",
             "html_report": benchmark.get("html_report"),
             "markdown_report": benchmark.get("markdown_report"),
+            "compat_html_report": str(cloud_root / "reports/BENCHMARK_REPORT.html"),
+            "compat_markdown_report": str(cloud_root / "reports/BENCHMARK_REPORT.md"),
+        },
+        "eval_artifacts": {
+            name: str(path)
+            for name, path in _plan_eval_artifact_paths(cloud_root).items()
         },
         "adapter": {
             "package_report_path": str(package_path),
@@ -1293,6 +1305,31 @@ def _package_acceptance_report_verified(
         return False
     return package_acceptance_path.resolve(strict=False) == acceptance_path.resolve(strict=False)
 
+def _plan_eval_artifact_paths(cloud_root: Path) -> dict[str, Path]:
+    eval_dir = cloud_root / "eval"
+    return {
+        "benchmark_cases": eval_dir / "benchmark_cases.csv",
+        "benchmark_predictions": eval_dir / "benchmark_predictions.jsonl",
+        "metrics_summary": eval_dir / "metrics_summary.csv",
+        "confusion_matrix": eval_dir / "confusion_matrix.csv",
+        "safety_gate_results": eval_dir / "safety_gate_results.csv",
+        "error_taxonomy": eval_dir / "error_taxonomy.csv",
+    }
+
+def _plan_eval_artifacts_present(
+    cloud_root: Path,
+    policy: CloudStoragePolicy,
+) -> bool:
+    for path in _plan_eval_artifact_paths(cloud_root).values():
+        if not _cloud_file_exists(path, policy):
+            return False
+        try:
+            if path.stat().st_size == 0:
+                return False
+        except OSError:
+            return False
+    return True
+
 def _benchmark_report_visualized(
     manifest: dict[str, Any],
     policy: CloudStoragePolicy,
@@ -1343,6 +1380,12 @@ def _benchmark_report_visualized(
         return False
     markdown_path = Path(str(markdown_report))
     if not _cloud_file_exists(markdown_path, policy):
+        return False
+    compat_html_path = html_path.parent / "BENCHMARK_REPORT.html"
+    compat_markdown_path = markdown_path.parent / "BENCHMARK_REPORT.md"
+    if not _cloud_file_exists(compat_html_path, policy):
+        return False
+    if not _cloud_file_exists(compat_markdown_path, policy):
         return False
     try:
         markdown = markdown_path.read_text(encoding="utf-8")

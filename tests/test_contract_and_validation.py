@@ -611,6 +611,60 @@ def test_eval_model_outputs_reports_json_and_intent_metrics(tmp_path: Path) -> N
     assert "local_artifact_usage" in report
     assert report["local_artifact_usage"] == 0
 
+def test_eval_model_outputs_writes_plan_required_eval_artifacts(tmp_path: Path) -> None:
+    input_path = tmp_path / "outputs.jsonl"
+    report_path = tmp_path / "reports/eval_report_run.json"
+    _write_jsonl(
+        input_path,
+        [
+            {
+                "id": "eval_001",
+                "expected_json": {"intent": "stop"},
+                "metadata": {"language": "en", "category": "motion"},
+                "model_output": "{\"intent\":\"stop\"}",
+                "latency_ms": 125,
+            },
+            {
+                "id": "eval_unsafe_001",
+                "expected_json": {"error": "UNSAFE_COMMAND"},
+                "metadata": {"language": "vi", "safety_class": "unsafe_rejected"},
+                "model_output": "{\"error\":\"UNSAFE_COMMAND\"}",
+                "latency_ms": 200,
+            },
+        ],
+    )
+
+    result = _run(
+        "scripts/eval_model_outputs.py",
+        "--input",
+        str(input_path),
+        "--report",
+        str(report_path),
+        "--cloud-root",
+        str(tmp_path),
+        "--allow-tmp",
+    )
+
+    assert result.returncode == 0, result.stderr
+    eval_dir = tmp_path / "eval"
+    required_files = {
+        "benchmark_cases.csv",
+        "benchmark_predictions.jsonl",
+        "metrics_summary.csv",
+        "confusion_matrix.csv",
+        "safety_gate_results.csv",
+        "error_taxonomy.csv",
+    }
+    assert {path.name for path in eval_dir.iterdir()} >= required_files
+    metrics_summary = (eval_dir / "metrics_summary.csv").read_text(encoding="utf-8")
+    assert "metric,value" in metrics_summary
+    assert "json_parse_rate,1.0" in metrics_summary
+    assert "unsafe_reject_recall,1.0" in metrics_summary
+    benchmark_cases = (eval_dir / "benchmark_cases.csv").read_text(encoding="utf-8")
+    assert "case_id,category,sub_category,language,prompt" in benchmark_cases
+    predictions = (eval_dir / "benchmark_predictions.jsonl").read_text(encoding="utf-8")
+    assert '"case_id": "eval_001"' in predictions
+
 
 def test_eval_model_outputs_requires_locked_v2_refusal_body_match(
     tmp_path: Path,

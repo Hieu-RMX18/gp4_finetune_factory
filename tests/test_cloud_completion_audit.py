@@ -173,6 +173,32 @@ def write_colab_readiness_evidence(cloud_root: Path, run_id: str) -> None:
 def write_eval_evidence(cloud_root: Path, run_id: str) -> None:
     eval_report = cloud_root / "reports" / f"eval_report_{run_id}.json"
     acceptance_report = cloud_root / "reports" / f"acceptance_gate_report_{run_id}.json"
+    eval_dir = cloud_root / "eval"
+    eval_dir.mkdir(parents=True, exist_ok=True)
+    (eval_dir / "benchmark_cases.csv").write_text(
+        "case_id,category,sub_category,language,prompt\ncase-1,motion,,en,stop\n",
+        encoding="utf-8",
+    )
+    (eval_dir / "benchmark_predictions.jsonl").write_text(
+        '{"case_id":"case-1","raw_output":"{\\"intent\\":\\"stop\\"}"}\n',
+        encoding="utf-8",
+    )
+    (eval_dir / "metrics_summary.csv").write_text(
+        "metric,value\njson_parse_rate,0.995\nunsafe_reject_recall,1.0\n",
+        encoding="utf-8",
+    )
+    (eval_dir / "confusion_matrix.csv").write_text(
+        "expected_intent,actual_intent,count\nstop,stop,1\n",
+        encoding="utf-8",
+    )
+    (eval_dir / "safety_gate_results.csv").write_text(
+        "gate,value\nunsafe_command_acceptance,0\n",
+        encoding="utf-8",
+    )
+    (eval_dir / "error_taxonomy.csv").write_text(
+        "error_type,count\nnone,0\n",
+        encoding="utf-8",
+    )
     write_json(
         eval_report,
         {
@@ -538,6 +564,14 @@ def write_benchmark_report_evidence(cloud_root: Path, run_id: str) -> None:
         "- previous_adapter_artifact_exists: True\n"
         "- previous_run_matched: True\n"
         "- adapter_aggregate_sha256: adapter-aggregate-sha\n",
+        encoding="utf-8",
+    )
+    (cloud_root / "reports/BENCHMARK_REPORT.html").write_text(
+        html_report.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (cloud_root / "reports/BENCHMARK_REPORT.md").write_text(
+        markdown_report.read_text(encoding="utf-8"),
         encoding="utf-8",
     )
     write_json(
@@ -1809,6 +1843,44 @@ def test_cloud_completion_audit_rejects_missing_benchmark_markdown(
         source_root=tmp_path / "source",
     )
 
+    failed = {item["id"] for item in payload["checklist"] if not item["passed"]}
+    assert "benchmark_report_visualized" in failed
+
+def test_cloud_completion_audit_rejects_missing_plan_eval_artifact(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "missing-plan-eval-artifact"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    (cloud_root / "eval" / "metrics_summary.csv").unlink(missing_ok=True)
+
+    payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+    )
+
+    assert payload["passed"] is False
+    failed = {item["id"] for item in payload["checklist"] if not item["passed"]}
+    assert "plan_eval_artifacts_present" in failed
+
+def test_cloud_completion_audit_rejects_missing_compat_benchmark_report(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "missing-compat-benchmark-report"
+    write_complete_cloud_evidence(cloud_root, run_id)
+    (cloud_root / "reports/BENCHMARK_REPORT.md").unlink()
+
+    payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+    )
+
+    assert payload["passed"] is False
     failed = {item["id"] for item in payload["checklist"] if not item["passed"]}
     assert "benchmark_report_visualized" in failed
 

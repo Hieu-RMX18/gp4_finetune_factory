@@ -829,6 +829,9 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     assert report["charts"][CHART_KEY_V2_QUOTA_FAILURES] == []
     assert set(REQUIRED_CHART_KEYS).issubset(report["charts"])
     html = html_report.read_text(encoding="utf-8")
+    assert (cloud_root / "reports/BENCHMARK_REPORT.html").read_text(
+        encoding="utf-8"
+    ) == html
     assert "<table" in html
     assert "Benchmark Columns" in html
     assert "<svg" in html
@@ -842,6 +845,9 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     assert "new_rows_requested" in html
     assert "raw_candidate_rows_requested" in html
     markdown = markdown_report.read_text(encoding="utf-8")
+    assert (cloud_root / "reports/BENCHMARK_REPORT.md").read_text(
+        encoding="utf-8"
+    ) == markdown
     assert "# GP4 V2 Benchmark Report" in markdown
     assert "## V2 Quota Failures" in markdown
     assert "## Maintenance Reference" in markdown
