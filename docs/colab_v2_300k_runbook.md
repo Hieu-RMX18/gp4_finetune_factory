@@ -19,8 +19,8 @@ setup cell reports `Google Drive mount failed`, stop at that prompt. Approve the
 
 Set `GP4_PREVIOUS_RUN_ID`, or set explicit Drive paths before running the
 notebook. The normal reuse path uses both
-`GP4_OLD_DATASET=<previous_run>/data/validated/accepted_300k.jsonl` and
-`GP4_PREVIOUS_ADAPTER=<previous_run>/models/qwen25_gp4_lora`. If no old dataset
+`GP4_OLD_DATASET=/content/drive/MyDrive/gp4_finetune_factory/runs/<previous_run_id>/data/validated/accepted_300k.jsonl` and
+`GP4_PREVIOUS_ADAPTER=/content/drive/MyDrive/gp4_finetune_factory/runs/<previous_run_id>/models/qwen25_gp4_lora`. If no old dataset
 is available, adapter-only reuse is allowed when `GP4_PREVIOUS_ADAPTER` points
 at a prior Drive adapter; that mode generates the full 300k accepted-row target from new rows and keeps `old_rows_kept=0`.
 When Drive already has a prior 300k accepted dataset but the reusable adapter is
@@ -41,8 +41,8 @@ including `checkpoint-*` children, as `legacy-drive-root` adapter-only reuse.
 export GP4_DRIVE_ROOT=/content/drive/MyDrive/gp4_finetune_factory
 export GP4_DRIVE_ACCOUNT_CONFIRMED=johnwickiller4444@gmail.com
 export GP4_PREVIOUS_RUN_ID=<previous_run_id>
-export GP4_OLD_DATASET=/content/drive/MyDrive/gp4_finetune_factory/<previous_run_id>/data/validated/accepted_300k.jsonl
-export GP4_PREVIOUS_ADAPTER=/content/drive/MyDrive/gp4_finetune_factory/<previous_run_id>/models/qwen25_gp4_lora
+export GP4_OLD_DATASET=/content/drive/MyDrive/gp4_finetune_factory/runs/<previous_run_id>/data/validated/accepted_300k.jsonl
+export GP4_PREVIOUS_ADAPTER=/content/drive/MyDrive/gp4_finetune_factory/runs/<previous_run_id>/models/qwen25_gp4_lora
 export GP4_FACTORY_SOURCE_EXPECTED_COMMIT=$(git ls-remote origin refs/heads/codex/gp4-react-ir-cloud-workflow | awk '{print $1}')
 export GP4_WS_EXPECTED_COMMIT=33e0242159aaa07b591f5db25d5484dc285a7425
 ```

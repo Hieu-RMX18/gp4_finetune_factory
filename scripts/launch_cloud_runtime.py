@@ -8,6 +8,9 @@ from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_NOTEBOOK = Path("notebooks/colab_gp4_react_qwen25_qlora.ipynb")
+DEFAULT_BRAVE_PROFILE_DIRECTORY = "Profile 26"
+DEFAULT_REMOTE_DEBUGGING_ADDRESS = "127.0.0.1"
+DEFAULT_REMOTE_DEBUGGING_PORT = "9222"
 BROWSER_HANDOFF_TIMEOUT_SECONDS = 3
 CRASH_MARKERS = ("Trace/breakpoint trap", "core dumped")
 
@@ -19,6 +22,12 @@ def main() -> int:
     parser.add_argument("--repo-slug", default=None)
     parser.add_argument("--branch", default=None)
     parser.add_argument("--browser", default="brave-browser")
+    parser.add_argument("--profile-directory", default=DEFAULT_BRAVE_PROFILE_DIRECTORY)
+    parser.add_argument(
+        "--remote-debugging-address",
+        default=DEFAULT_REMOTE_DEBUGGING_ADDRESS,
+    )
+    parser.add_argument("--remote-debugging-port", default=DEFAULT_REMOTE_DEBUGGING_PORT)
     parser.add_argument("--notebook", type=Path, default=DEFAULT_NOTEBOOK)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -35,7 +44,14 @@ def main() -> int:
         branch=branch,
         notebook_path=notebook_path,
     )
-    command = [args.browser, "--new-tab", url]
+    command = [
+        args.browser,
+        f"--profile-directory={args.profile_directory}",
+        f"--remote-debugging-address={args.remote_debugging_address}",
+        f"--remote-debugging-port={args.remote_debugging_port}",
+        "--new-tab",
+        url,
+    ]
     print(" ".join(command))
     if args.dry_run:
         return 0

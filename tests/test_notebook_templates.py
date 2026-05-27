@@ -99,6 +99,7 @@ def test_colab_notebook_locks_drive_account_and_reuses_previous_accepted_dataset
     assert "GP4_PREVIOUS_ADAPTER" in setup_source
     assert "GP4_OLD_DATASET" in setup_source
     assert "data/validated/accepted_300k.jsonl" in setup_source
+    assert "RUNS_ROOT = Path(DRIVE_ROOT) / 'runs'" in setup_source
     assert "qwen25_gp4_lora" in setup_source
     assert "Path(previous_dir) / 'models' / adapter_name" in setup_source
     assert "qwen25_gp4_lora_pilot" in setup_source
@@ -120,9 +121,11 @@ def test_colab_notebook_locks_drive_account_and_reuses_previous_accepted_dataset
     assert "if not ADAPTER_PREVIOUS_RUN_ID and not PREVIOUS_ADAPTER:" in setup_source
     assert "DATASET_PREVIOUS_RUN_ID = max(previous_dataset_candidates)[1]" in setup_source
     assert "_, ADAPTER_PREVIOUS_RUN_ID, PREVIOUS_ADAPTER = max(previous_adapter_candidates)" in setup_source
-    assert "previous_candidate = Path(DRIVE_ROOT) / DATASET_PREVIOUS_RUN_ID / 'data/validated/accepted_300k.jsonl'" in setup_source
+    assert "previous_candidate = RUNS_ROOT / DATASET_PREVIOUS_RUN_ID / 'data/validated/accepted_300k.jsonl'" in setup_source
+    assert "previous_candidate = Path(DRIVE_ROOT) / DATASET_PREVIOUS_RUN_ID" not in setup_source
     assert "previous_adapter_candidates.append((adapter_candidate.stat().st_mtime, previous_dir.name, str(adapter_candidate)))" in setup_source
-    assert "Path(DRIVE_ROOT) / ADAPTER_PREVIOUS_RUN_ID" in setup_source
+    assert "RUNS_ROOT / ADAPTER_PREVIOUS_RUN_ID" in setup_source
+    assert "Path(DRIVE_ROOT) / ADAPTER_PREVIOUS_RUN_ID" not in setup_source
     assert "<adapter-only reuse; generate full 300k>" in setup_source
     assert "GP4_PREVIOUS_ADAPTER or GP4_PREVIOUS_RUN_ID" in setup_source
     assert "GP4_OLD_DATASET must live under the configured Google Drive root" in setup_source

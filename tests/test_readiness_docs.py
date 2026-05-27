@@ -112,6 +112,8 @@ def test_colab_v2_300k_runbook_pins_drive_reuse_and_reports() -> None:
 
     assert "johnwickiller4444@gmail.com" in text
     assert "/content/drive/MyDrive/gp4_finetune_factory" in text
+    assert "/content/drive/MyDrive/gp4_finetune_factory/runs/<previous_run_id>" in text
+    assert "/content/drive/MyDrive/gp4_finetune_factory/<previous_run_id>" not in text
     assert "GP4_PREVIOUS_RUN_ID" in text
     assert "GP4_PREVIOUS_ADAPTER" in text
     assert "models/qwen25_gp4_lora" in text
@@ -178,6 +180,10 @@ def test_env_example_requires_factory_source_commit_pin() -> None:
     text = (ROOT / ".env.example").read_text(encoding="utf-8")
 
     assert "GP4_FACTORY_SOURCE_EXPECTED_COMMIT=<required-factory-source-commit-sha>" in text
+    assert "GP4_OLD_DATASET=/content/drive/MyDrive/gp4_finetune_factory/runs/<previous_accepted_run_id>/data/validated/accepted_300k.jsonl" in text
+    assert "CLOUD_ROOT=/content/drive/MyDrive/gp4_finetune_factory/runs/<run_id>" in text
+    assert "GP4_OLD_DATASET=/content/drive/MyDrive/gp4_finetune_factory/<previous_accepted_run_id>" not in text
+    assert "CLOUD_ROOT=/content/drive/MyDrive/gp4_finetune_factory/<run_id>" not in text
 
 
 def test_makefile_local_manifest_target_renders_cloud_only_readiness_command() -> None:

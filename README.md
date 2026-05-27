@@ -163,7 +163,7 @@ Use `notebooks/colab_gp4_react_qwen25_qlora.ipynb` with `CLOUD_ROOT` pointing
 at Google Drive. Build a source-only bundle directly into cloud storage:
 
 ```bash
-CLOUD_ROOT=/content/drive/MyDrive/gp4_finetune_factory/<run_id> make retrain-bundle
+CLOUD_ROOT=/content/drive/MyDrive/gp4_finetune_factory/runs/<run_id> make retrain-bundle
 ```
 
 To open the approved Colab notebook in Brave from this branch:
@@ -172,11 +172,13 @@ To open the approved Colab notebook in Brave from this branch:
 make open-colab-brave
 ```
 
+This opens Brave with Johnwick (`Profile 26`) and CDP on `127.0.0.1:9222`.
+
 No adapter is accepted until the cloud run writes
 `acceptance_gate_report_<run_id>.json` under `CLOUD_ROOT` with `passed=true`.
 Notebook completion or local artifact files are not acceptance evidence. After
 a cloud run finishes, audit the evidence with:
 
 ```bash
-CLOUD_ROOT=/content/drive/MyDrive/gp4_finetune_factory/<run_id> RUN_ID=<run_id> make audit-cloud-run
+CLOUD_ROOT=/content/drive/MyDrive/gp4_finetune_factory/runs/<run_id> RUN_ID=<run_id> make audit-cloud-run
 ```
