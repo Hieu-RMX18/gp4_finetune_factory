@@ -55,7 +55,8 @@ def test_colab_react_cloud_notebook_uses_source_bundle_and_cloud_root() -> None:
         assert "os.chdir(WORK_DIR)" in source
         assert "run_checked('pip-install', ['python', '-m', 'pip', 'install', '-q', '-r', 'requirements-cloud.txt'])" in source
         assert "unsloth datasets trl" not in source
-        assert "gp4-react-v2-300k-" in source
+        assert "gp4-qwen25-7b-v2-300k-" in source
+        assert "gp4-react-v2-300k-" not in source
         assert "gp4-react-50k-" not in source
         assert "2026-05-20-gp4-v2-300k-readiness.md" in source
         assert "2026-05-16-gp4-react-ir-cloud-workflow.md" not in source

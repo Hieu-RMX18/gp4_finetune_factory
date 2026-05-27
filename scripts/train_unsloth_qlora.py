@@ -23,6 +23,7 @@ from package_adapter import adapter_artifact_exists
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC_PATH = ROOT / "configs/dataset_spec.yaml"
+DEFAULT_MODEL_NAME = "unsloth/Qwen2.5-7B-Instruct"
 QWEN_EOS_TOKEN_CANDIDATES = ("<|im_end|>", "<|endoftext|>")
 QWEN_PAD_TOKEN_CANDIDATES = ("<|PAD_TOKEN|>", "<|endoftext|>")
 NON_INTERACTIVE_TRAINING_ENV = {
@@ -40,20 +41,7 @@ NON_INTERACTIVE_TRAINING_ENV = {
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Train a Qwen2.5-7B GP4 Semantic IR QLoRA adapter with Unsloth."
-    )
-    parser.add_argument("--train", type=Path, required=True)
-    parser.add_argument("--val", type=Path, required=True)
-    parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--report", type=Path, required=True)
-    parser.add_argument("--model-name", default="Qwen/Qwen2.5-7B-Instruct")
-    parser.add_argument("--max-steps", type=int, default=None)
-    parser.add_argument("--resume-from-adapter", type=Path)
-    parser.add_argument("--resume-from-checkpoint", type=Path)
-    parser.add_argument("--cloud-root", type=Path)
-    parser.add_argument("--allow-tmp", action="store_true")
-    parser.add_argument("--dry-run", action="store_true")
+    parser = build_arg_parser()
     args = parser.parse_args()
 
     if not args.dry_run:
@@ -153,6 +141,23 @@ def main() -> int:
         print(f"training_blocked reason={report['reason']} report={args.report}")
         return 1
     return 0
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Train a Qwen2.5-7B GP4 Semantic IR QLoRA adapter with Unsloth."
+    )
+    parser.add_argument("--train", type=Path, required=True)
+    parser.add_argument("--val", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--model-name", default=DEFAULT_MODEL_NAME)
+    parser.add_argument("--max-steps", type=int, default=None)
+    parser.add_argument("--resume-from-adapter", type=Path)
+    parser.add_argument("--resume-from-checkpoint", type=Path)
+    parser.add_argument("--cloud-root", type=Path)
+    parser.add_argument("--allow-tmp", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    return parser
 
 
 def _training_config(spec: dict[str, Any], *, max_steps: int | None) -> dict[str, Any]:

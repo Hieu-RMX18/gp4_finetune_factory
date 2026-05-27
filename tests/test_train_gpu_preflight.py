@@ -41,6 +41,24 @@ def test_training_config_defaults_to_final_epoch_contract() -> None:
     assert training["weight_decay"] == 0.01
     assert training["lr_scheduler_type"] == "cosine"
 
+def test_default_training_base_model_matches_plan() -> None:
+    parser = train_unsloth_qlora.build_arg_parser()
+
+    args = parser.parse_args(
+        [
+            "--train",
+            "train.jsonl",
+            "--val",
+            "val.jsonl",
+            "--output-dir",
+            "adapter",
+            "--report",
+            "train_report.json",
+        ]
+    )
+
+    assert args.model_name == "unsloth/Qwen2.5-7B-Instruct"
+
 
 def test_training_config_keeps_explicit_max_steps_for_smoke_runs() -> None:
     spec = train_unsloth_qlora.read_yaml(train_unsloth_qlora.SPEC_PATH)

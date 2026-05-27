@@ -1,6 +1,6 @@
 # GP4 Qwen2.5 Semantic IR Fine-Tune Factory
 
-This repository builds a reproducible cloud-run dataset and evaluation factory for fine-tuning `Qwen/Qwen2.5-7B-Instruct` to draft GP4 Semantic IR JSON for the existing `llm_gateway`.
+This repository builds a reproducible cloud-run dataset and evaluation factory for fine-tuning `unsloth/Qwen2.5-7B-Instruct` to draft GP4 Semantic IR JSON for the existing `llm_gateway`.
 
 The model is not a robot controller. Training targets must only produce Semantic IR with an `intent` field or a safe error object. Runtime execution still belongs to the ROS2 path:
 

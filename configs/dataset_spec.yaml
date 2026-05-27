@@ -5,7 +5,7 @@ project:
   source_branch: ws-deep-rebuild-3526
   source_commit_env: GP4_WS_EXPECTED_COMMIT
   source_commit_required: true
-  target_model: Qwen/Qwen2.5-7B-Instruct
+  target_model: unsloth/Qwen2.5-7B-Instruct
   training_output_kind: qlora_adapter
 
 contract:

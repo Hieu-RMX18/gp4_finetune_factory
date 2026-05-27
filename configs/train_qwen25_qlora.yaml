@@ -1,4 +1,4 @@
-base_model: Qwen/Qwen2.5-7B-Instruct
+base_model: unsloth/Qwen2.5-7B-Instruct
 method: unsloth_qlora_4bit
 lora:
   r: 32
