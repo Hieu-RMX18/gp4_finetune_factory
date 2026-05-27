@@ -80,6 +80,12 @@ For adapter-only reuse, omit `--old-dataset` and keep
 `--previous-adapter "$GP4_PREVIOUS_ADAPTER"` pointed at a prior Drive adapter.
 That mode does not import old rows; use it to generate the full 300k accepted-row target from new rows while resuming training from the prior adapter.
 
+For a base-model start, omit both `--old-dataset` and `--previous-adapter`.
+That mode records explicit base-model-start evidence, imports no old rows, and
+generates the full 300k accepted-row target before training from
+`unsloth/Qwen2.5-7B-Instruct`. Do not call the run final until the full
+dataset, training, eval, package, benchmark, and completion audit gates pass.
+
 In Colab, use the Google Drive account `johnwickiller4444@gmail.com` and keep
 `GP4_DRIVE_ROOT=/content/drive/MyDrive/gp4_finetune_factory` unless the Drive
 folder is intentionally moved. The notebook writes a Drive account hint and
@@ -97,6 +103,10 @@ If Drive has a previous adapter but no usable previous accepted dataset, the
 notebook uses adapter-only reuse and passes `--allow-adapter-only-reuse` to the
 readiness report; the orchestrator then requests 300k new rows and keeps
 `old_rows_kept=0`.
+If Drive has neither a usable previous dataset nor a previous adapter, leave
+`GP4_OLD_DATASET` and `GP4_PREVIOUS_ADAPTER` unset. The notebook records a
+base-model start and the orchestrator generates the full 300k accepted-row
+target before training from the base model.
 If the newest accepted 300k dataset and the reusable adapter come from two
 different completed prior Drive runs, the notebook passes
 `--allow-mixed-prior-artifacts`; readiness still rejects any dataset or adapter

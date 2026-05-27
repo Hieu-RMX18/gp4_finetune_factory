@@ -121,10 +121,6 @@ def main() -> int:
     parser.add_argument("--preset", choices=["legacy", "v2-300k"], default="legacy")
     args = parser.parse_args()
 
-    if args.preset == "v2-300k" and not args.dry_run and args.previous_adapter is None:
-        print("blocked_reason=v2 300k run requires --previous-adapter")
-        return 1
-
     try:
         validate_cloud_run_paths(
             cloud_root=args.cloud_root,
@@ -518,27 +514,25 @@ def _run_import_old_phase(phase: str, context: dict[str, Any]) -> dict[str, Any]
     old_datasets: list[Path] = context.get("old_datasets", [])
     if not old_datasets:
         adapter_only_reuse = context.get("previous_adapter") is not None
+        base_model_start = not adapter_only_reuse
         report_path = write_phase_report(
             cloud_root=cloud_root,
             run_id=str(context["run_id"]),
             phase=phase,
             payload={
-                "passed": adapter_only_reuse,
+                "passed": True,
                 "old_datasets": [],
                 "old_dataset_count": 0,
                 "old_dataset_fingerprints": [],
                 "adapter_only_reuse": adapter_only_reuse,
-                "blocked_reason": (
-                    ""
-                    if adapter_only_reuse
-                    else "v2 300k run requires a previous accepted dataset or previous adapter"
-                ),
+                "base_model_start": base_model_start,
+                "blocked_reason": "",
             },
             allow_tmp=bool(context["allow_tmp"]),
         )
         return {
             "name": phase,
-            "status": "passed" if adapter_only_reuse else "blocked",
+            "status": "passed",
             "report": str(report_path),
         }
     report = {
@@ -570,23 +564,21 @@ def _run_validate_old_v2_phase(phase: str, context: dict[str, Any]) -> dict[str,
     report_path = phase_report_path(cloud_root, str(context["run_id"]), phase)
     if not old_datasets:
         adapter_only_reuse = context.get("previous_adapter") is not None
+        base_model_start = not adapter_only_reuse
         write_json(
             report_path,
             {
-                "passed": adapter_only_reuse,
+                "passed": True,
                 "old_rows_valid": 0,
                 "old_validated_paths": [],
                 "adapter_only_reuse": adapter_only_reuse,
-                "blocked_reason": (
-                    ""
-                    if adapter_only_reuse
-                    else "v2 300k run requires a previous accepted dataset or previous adapter"
-                ),
+                "base_model_start": base_model_start,
+                "blocked_reason": "",
             },
         )
         return {
             "name": phase,
-            "status": "passed" if adapter_only_reuse else "blocked",
+            "status": "passed",
             "report": str(report_path),
         }
 
@@ -1192,7 +1184,8 @@ def _run_dry_phase(phase: str, context: dict[str, Any]) -> dict[str, Any]:
         report = phase_report_path(cloud_root, run_id, phase)
         old_datasets: list[Path] = context.get("old_datasets", [])
         adapter_only_reuse = not old_datasets and context.get("previous_adapter") is not None
-        passed = bool(old_datasets) or adapter_only_reuse
+        base_model_start = not old_datasets and context.get("previous_adapter") is None
+        passed = bool(old_datasets) or adapter_only_reuse or base_model_start
         write_json(
             report,
             {
@@ -1201,10 +1194,11 @@ def _run_dry_phase(phase: str, context: dict[str, Any]) -> dict[str, Any]:
                 "old_datasets": [str(path) for path in old_datasets],
                 "old_dataset_count": len(old_datasets),
                 "adapter_only_reuse": adapter_only_reuse,
+                "base_model_start": base_model_start,
                 "blocked_reason": (
                     ""
                     if passed
-                    else "v2 300k run requires a previous accepted dataset or previous adapter"
+                    else "v2 300k run requires a previous accepted dataset"
                 ),
             },
         )
@@ -1214,7 +1208,8 @@ def _run_dry_phase(phase: str, context: dict[str, Any]) -> dict[str, Any]:
         report = phase_report_path(cloud_root, run_id, phase)
         old_datasets: list[Path] = context.get("old_datasets", [])
         adapter_only_reuse = not old_datasets and context.get("previous_adapter") is not None
-        passed = bool(old_datasets) or adapter_only_reuse
+        base_model_start = not old_datasets and context.get("previous_adapter") is None
+        passed = bool(old_datasets) or adapter_only_reuse or base_model_start
         write_json(
             report,
             {
@@ -1223,10 +1218,11 @@ def _run_dry_phase(phase: str, context: dict[str, Any]) -> dict[str, Any]:
                 "old_rows_valid": 0,
                 "old_validated_paths": [str(path) for path in old_datasets],
                 "adapter_only_reuse": adapter_only_reuse,
+                "base_model_start": base_model_start,
                 "blocked_reason": (
                     ""
                     if passed
-                    else "v2 300k run requires a previous accepted dataset or previous adapter"
+                    else "v2 300k run requires a previous accepted dataset"
                 ),
             },
         )

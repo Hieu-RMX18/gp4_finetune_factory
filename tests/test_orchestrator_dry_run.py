@@ -170,7 +170,7 @@ def test_benchmark_report_phase_uses_full_v2_evidence_set(
     assert {Path(path).name for path in input_reports} == expected_names
 
 
-def test_cloud_import_old_blocks_without_prior_accepted_dataset(tmp_path: Path) -> None:
+def test_cloud_import_old_allows_base_model_start_without_prior_artifacts(tmp_path: Path) -> None:
     cloud_root = tmp_path / "cloud"
     reports_dir = cloud_root / "reports"
     reports_dir.mkdir(parents=True)
@@ -178,7 +178,7 @@ def test_cloud_import_old_blocks_without_prior_accepted_dataset(tmp_path: Path) 
     result = _run_cloud_phase(
         "import-old",
         {
-            "run_id": "missing-old-dataset",
+            "run_id": "base-model-start",
             "cloud_root": cloud_root,
             "reports_dir": reports_dir,
             "seed": Path("data/seed/gp4_seed_starter.jsonl"),
@@ -191,15 +191,13 @@ def test_cloud_import_old_blocks_without_prior_accepted_dataset(tmp_path: Path) 
         },
     )
 
-    assert result["status"] == "blocked"
+    assert result["status"] == "passed"
     report = json.loads(Path(result["report"]).read_text(encoding="utf-8"))
-    assert report["passed"] is False
+    assert report["passed"] is True
     assert report["old_dataset_count"] == 0
     assert report["adapter_only_reuse"] is False
-    assert (
-        report["blocked_reason"]
-        == "v2 300k run requires a previous accepted dataset or previous adapter"
-    )
+    assert report["base_model_start"] is True
+    assert report["blocked_reason"] == ""
 
 def test_cloud_import_old_allows_adapter_only_reuse_with_previous_adapter(
     tmp_path: Path,
@@ -377,20 +375,18 @@ def test_gpu_preflight_requires_cuda_and_updates_final_platform_status(
     assert final_status["gpu_available"] is True
 
 
-def test_v2_300k_preset_requires_previous_adapter(tmp_path: Path) -> None:
+def test_v2_300k_preset_allows_base_model_start_without_previous_adapter(
+    tmp_path: Path,
+) -> None:
     cloud_root = tmp_path / "cloud"
-    seed = tmp_path / "seed.jsonl"
-    old_dataset = cloud_root.parent / "previous/data/validated/accepted_300k.jsonl"
-    seed.write_text('{"id":"seed-1"}\n', encoding="utf-8")
-    old_dataset.parent.mkdir(parents=True)
-    old_dataset.write_text('{"id":"old-1"}\n', encoding="utf-8")
+    seed = ROOT / "data/seed/gp4_seed_starter.jsonl"
 
     result = subprocess.run(
         [
             sys.executable,
             "scripts/cloud_orchestrator.py",
             "--run-id",
-            "missing-previous-adapter",
+                "base-model-start",
             "--cloud-root",
             str(cloud_root),
             "--seed",
@@ -399,10 +395,9 @@ def test_v2_300k_preset_requires_previous_adapter(tmp_path: Path) -> None:
             "train",
             "--preset",
             "v2-300k",
-            "--old-dataset",
-            str(old_dataset),
-            "--allow-tmp",
-        ],
+                "--dry-run",
+                "--allow-tmp",
+            ],
         cwd=ROOT,
         text=True,
         capture_output=True,
@@ -410,7 +405,15 @@ def test_v2_300k_preset_requires_previous_adapter(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 1
-    assert "v2 300k run requires --previous-adapter" in result.stdout
+    assert "v2 300k run requires --previous-adapter" not in result.stdout
+    import_report = json.loads(
+        (cloud_root / "reports" / "import-old_base-model-start.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert import_report["passed"] is True
+    assert import_report["old_dataset_count"] == 0
+    assert import_report["base_model_start"] is True
 
 
 def test_eval_phase_uses_explicit_gp4_ws_contract_repo(
@@ -815,7 +818,13 @@ def test_orchestrator_v2_preset_dry_run_has_no_unknown_phases(
     assert [phase["name"] for phase in manifest["phases"]] == V2_300K_PHASES
     assert {phase["status"] for phase in manifest["phases"]} <= {"passed", "blocked"}
     phase_statuses = {phase["name"]: phase["status"] for phase in manifest["phases"]}
-    assert phase_statuses["import-old"] == "blocked"
+    assert phase_statuses["import-old"] == "passed"
+    import_report = json.loads(
+        (cloud_root / "reports" / "import-old_dryrun-v2.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert import_report["base_model_start"] is True
     local_manifest_report = json.loads(
         (
             cloud_root / "reports" / "local-install-manifest_dryrun-v2.json"

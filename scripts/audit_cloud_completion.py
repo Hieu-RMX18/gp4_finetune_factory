@@ -1035,7 +1035,10 @@ def _old_dataset_reuse_verified(
     assert merge_report is not None
     fingerprints = import_report.get("old_dataset_fingerprints", [])
     target_rows = _int_value(plan_report.get("target_rows"))
-    if import_report.get("adapter_only_reuse") is True:
+    if (
+        import_report.get("adapter_only_reuse") is True
+        or import_report.get("base_model_start") is True
+    ):
         return (
             not fingerprints
             and _int_value(import_report.get("old_dataset_count")) == 0
@@ -1131,12 +1134,20 @@ def _train_phase_outputs_verified(
         run_id=run_id,
         policy=policy,
     )
+    if expected_resume is None:
+        return (
+            str(report.get("resume_from_adapter") or "") == ""
+            and report.get("resume_from_adapter_allowed_cloud_path") is False
+            and report.get("resume_from_adapter_artifact_exists") is False
+            and _int_value(report.get("train_rows")) > 0
+            and _int_value(report.get("val_rows")) > 0
+        )
     resume_path = Path(str(report.get("resume_from_adapter") or ""))
     reuse_policy = CloudStoragePolicy(
         (cloud_root, cloud_root.parent),
         allow_tmp=policy.allow_tmp,
     )
-    if expected_resume is None or not _same_path(resume_path, expected_resume):
+    if not _same_path(resume_path, expected_resume):
         return False
     if report.get("resume_from_adapter_allowed_cloud_path") is not True:
         return False

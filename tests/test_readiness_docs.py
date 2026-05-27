@@ -43,6 +43,8 @@ def test_readme_documents_v2_300k_workflow_and_local_readiness() -> None:
     assert "raw_candidate_rows_requested" in text
     assert "adapter-only reuse" in text
     assert "generate the full 300k accepted-row target from new rows" in text
+    assert "base-model start" in text
+    assert "omit both `--old-dataset` and `--previous-adapter`" in text
     assert "adapter_aggregate_sha256" in text
     assert "previous_adapter_artifact_exists" in text
     assert "previous_run_matched" in text
@@ -121,6 +123,8 @@ def test_colab_v2_300k_runbook_pins_drive_reuse_and_reports() -> None:
     assert "accepted_300k.jsonl" in text
     assert "adapter-only reuse" in text
     assert "generates the full 300k accepted-row target from new rows" in text
+    assert "base-model start" in text
+    assert "leave `GP4_OLD_DATASET` and `GP4_PREVIOUS_ADAPTER` unset" in text
     assert "GP4_WS_EXPECTED_COMMIT" in text
     assert "GP4_FACTORY_SOURCE_EXPECTED_COMMIT" in text
     assert "ws-deep-rebuild-3526" in text

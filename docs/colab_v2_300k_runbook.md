@@ -23,6 +23,9 @@ notebook. The normal reuse path uses both
 `GP4_PREVIOUS_ADAPTER=/content/drive/MyDrive/gp4_finetune_factory/runs/<previous_run_id>/models/qwen25_gp4_lora`. If no old dataset
 is available, adapter-only reuse is allowed when `GP4_PREVIOUS_ADAPTER` points
 at a prior Drive adapter; that mode generates the full 300k accepted-row target from new rows and keeps `old_rows_kept=0`.
+If no prior dataset or adapter is available, use a base-model start: leave `GP4_OLD_DATASET` and `GP4_PREVIOUS_ADAPTER` unset.
+The readiness report records base-model-start evidence, and the orchestrator imports no old rows before
+generating the full 300k accepted-row target.
 When Drive already has a prior 300k accepted dataset but the reusable adapter is
 from a different prior run, the notebook uses explicit mixed-prior-artifacts
 readiness. Current-run datasets or adapters are still rejected.
@@ -36,6 +39,8 @@ contain final adapter weights.
 It also recognizes the older Drive-root pilot adapter layout
 `/content/drive/MyDrive/gp4_finetune_factory/models/qwen25_gp4_lora_pilot`,
 including `checkpoint-*` children, as `legacy-drive-root` adapter-only reuse.
+If the scan finds no valid prior dataset or adapter, keep the reuse environment
+variables unset and continue with the base-model start path.
 
 ```bash
 export GP4_DRIVE_ROOT=/content/drive/MyDrive/gp4_finetune_factory

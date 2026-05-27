@@ -32,7 +32,7 @@ def main() -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--gp4-ws", type=Path, required=True)
     parser.add_argument("--old-dataset", type=Path)
-    parser.add_argument("--previous-adapter", type=Path, required=True)
+    parser.add_argument("--previous-adapter", type=Path)
     parser.add_argument("--expected-commit")
     parser.add_argument("--report", type=Path)
     parser.add_argument("--allow-adapter-only-reuse", action="store_true")
@@ -107,7 +107,6 @@ def build_colab_readiness_report(
         and str(drive_confirmation.get("expected_email") or "").strip()
         == EXPECTED_DRIVE_ACCOUNT_EMAIL
     )
-    adapter_only_reuse = allow_adapter_only_reuse and old_dataset is None
     old_dataset_exists = old_dataset.is_file() if old_dataset is not None else False
     old_dataset_rows = _jsonl_rows(old_dataset) if old_dataset_exists else 0
     old_dataset_sha = sha256_file(old_dataset) if old_dataset_exists else ""
@@ -136,6 +135,9 @@ def build_colab_readiness_report(
         allow_adapter_only_reuse=allow_adapter_only_reuse,
         allow_mixed_prior_artifacts=allow_mixed_prior_artifacts,
     )
+    base_model_start = bool(previous_run["base_model_start"])
+    adapter_only_reuse = allow_adapter_only_reuse and old_dataset is None and not base_model_start
+    fresh_generation_start = old_dataset is None and base_model_start
     gp4_ws_exists = gp4_ws.exists()
     gp4_ws_allowed = is_allowed_cloud_path(gp4_ws, gp4_ws_policy)
     gp4_ws_branch = git_value(gp4_ws, "branch", "--show-current") if gp4_ws_exists else ""
@@ -160,43 +162,44 @@ def build_colab_readiness_report(
         ),
         _check(
             "old_dataset_exists",
-            old_dataset_exists or adapter_only_reuse,
-            str(old_dataset or "<adapter-only-reuse>"),
+            old_dataset_exists or adapter_only_reuse or fresh_generation_start,
+            str(old_dataset or "<fresh-generation-from-base>"),
         ),
         _check(
             "old_dataset_allowed_cloud_path",
             (old_dataset is not None and is_allowed_cloud_path(old_dataset, policy))
-            or adapter_only_reuse,
-            str(old_dataset or "<adapter-only-reuse>"),
+            or adapter_only_reuse
+            or fresh_generation_start,
+            str(old_dataset or "<fresh-generation-from-base>"),
         ),
         _check(
             "old_dataset_has_rows",
-            old_dataset_rows > 0 or adapter_only_reuse,
-            str(old_dataset or "<adapter-only-reuse>"),
+            old_dataset_rows > 0 or adapter_only_reuse or fresh_generation_start,
+            str(old_dataset or "<fresh-generation-from-base>"),
         ),
         _check(
             "previous_adapter_required",
-            previous_adapter is not None,
-            str(previous_adapter or ""),
+            previous_adapter is not None or base_model_start,
+            str(previous_adapter or "<base-model-start>"),
         ),
         _check(
             "previous_adapter_allowed_cloud_path",
-            previous_adapter_allowed,
-            str(previous_adapter or ""),
+            previous_adapter_allowed or base_model_start,
+            str(previous_adapter or "<base-model-start>"),
         ),
         _check(
             "previous_adapter_exists",
-            previous_adapter_exists,
-            str(previous_adapter or ""),
+            previous_adapter_exists or base_model_start,
+            str(previous_adapter or "<base-model-start>"),
         ),
         _check(
             "previous_adapter_artifact_exists",
-            previous_adapter_artifact_exists,
-            str(previous_adapter or ""),
+            previous_adapter_artifact_exists or base_model_start,
+            str(previous_adapter or "<base-model-start>"),
         ),
         _check(
             "previous_reuse_same_prior_run",
-            previous_run["matched"],
+            previous_run["matched"] or base_model_start,
             previous_run["details"],
         ),
         _check("gp4_ws_exists", gp4_ws_exists, str(gp4_ws)),
@@ -249,12 +252,14 @@ def build_colab_readiness_report(
             "rows": old_dataset_rows,
             "sha256": old_dataset_sha,
             "adapter_only_reuse": adapter_only_reuse,
+            "fresh_generation_from_base": fresh_generation_start,
         },
         "previous_adapter": {
             "path": str(previous_adapter) if previous_adapter is not None else "",
             "exists": previous_adapter_exists,
             "allowed_cloud_path": previous_adapter_allowed,
             "artifact_exists": previous_adapter_artifact_exists,
+            "base_model_start": base_model_start,
         },
         "previous_run": previous_run,
         "gp4_ws": {
@@ -301,6 +306,10 @@ def _previous_run_reuse_state(
         and not old_dataset_run_id
         and bool(previous_adapter_run_id)
     )
+    base_model_start = (
+        previous_adapter is None
+        and not _is_current_run_path(old_dataset, cloud_root)
+    )
     same_source_run = (
         bool(previous_adapter_run_id)
         and (
@@ -321,7 +330,11 @@ def _previous_run_reuse_state(
     )
     source_run_id = previous_adapter_run_id if adapter_only_reuse else old_dataset_run_id
     is_prior_run = same_source_run and source_run_id != run_id
-    matched = (same_source_run and is_prior_run) or mixed_prior_artifacts_accepted
+    matched = (
+        (same_source_run and is_prior_run)
+        or mixed_prior_artifacts_accepted
+        or base_model_start
+    )
     details = (
         f"old_dataset_run_id={old_dataset_run_id or '<unknown>'} "
         f"previous_adapter_run_id={previous_adapter_run_id or '<none>'} "
@@ -332,6 +345,7 @@ def _previous_run_reuse_state(
         "old_dataset_run_id": old_dataset_run_id,
         "previous_adapter_run_id": previous_adapter_run_id,
         "adapter_only_reuse": adapter_only_reuse,
+        "base_model_start": base_model_start,
         "same_source_run": same_source_run,
         "mixed_prior_artifacts": mixed_prior_artifacts,
         "mixed_prior_artifacts_allowed": allow_mixed_prior_artifacts,
@@ -385,6 +399,15 @@ def _previous_adapter_run_id_from_path(
             return parts[0]
     return ""
 
+
+def _is_current_run_path(path: Path | None, cloud_root: Path) -> bool:
+    if path is None:
+        return False
+    try:
+        path.resolve(strict=False).relative_to(cloud_root.resolve(strict=False))
+    except ValueError:
+        return False
+    return True
 
 def _configured_expected_commit(raw_value: str | None, *, env_name: str) -> str:
     return (raw_value or os.environ.get(env_name) or "").strip()

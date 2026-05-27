@@ -126,8 +126,9 @@ def test_colab_notebook_locks_drive_account_and_reuses_previous_accepted_dataset
     assert "previous_adapter_candidates.append((adapter_candidate.stat().st_mtime, previous_dir.name, str(adapter_candidate)))" in setup_source
     assert "RUNS_ROOT / ADAPTER_PREVIOUS_RUN_ID" in setup_source
     assert "Path(DRIVE_ROOT) / ADAPTER_PREVIOUS_RUN_ID" not in setup_source
-    assert "<adapter-only reuse; generate full 300k>" in setup_source
-    assert "GP4_PREVIOUS_ADAPTER or GP4_PREVIOUS_RUN_ID" in setup_source
+    assert "<fresh generation from base model>" in setup_source
+    assert "<base model start>" in setup_source
+    assert "if PREVIOUS_ADAPTER:" in setup_source
     assert "GP4_OLD_DATASET must live under the configured Google Drive root" in setup_source
     assert "scripts/colab_readiness_report.py" in orchestrator_source
     assert "colab_readiness_{RUN_ID}.json" in orchestrator_source
