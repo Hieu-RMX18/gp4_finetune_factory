@@ -543,8 +543,8 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
                     "path": str(cloud_root / "contract_snapshots/gp4_ws_ws-deep-rebuild-3526"),
                     "branch": "ws-deep-rebuild-3526",
                     "expected_branch": "ws-deep-rebuild-3526",
-                    "head": "33e0242159aaa07b591f5db25d5484dc285a7425",
-                    "expected_commit": "33e0242159aaa07b591f5db25d5484dc285a7425",
+                    "head": "169af43c840a22fccaad8838b7545232704ccc7d",
+                    "expected_commit": "169af43c840a22fccaad8838b7545232704ccc7d",
                     "expected_commit_matches": True,
                     "is_dirty": False,
                 },
@@ -766,7 +766,7 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     assert provenance["drive_account"]["confirmed_email"] == "johnwickiller4444@gmail.com"
     assert provenance["gp4_ws"]["branch"] == "ws-deep-rebuild-3526"
     assert provenance["gp4_ws"]["expected_commit"] == (
-        "33e0242159aaa07b591f5db25d5484dc285a7425"
+        "169af43c840a22fccaad8838b7545232704ccc7d"
     )
     assert provenance["gp4_ws"]["expected_commit_matches"] is True
     assert provenance["old_dataset_reuse"]["old_dataset_count"] == 1
@@ -805,9 +805,9 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     assert {
         "source": str(colab_readiness_report),
         "metric": "gp4_ws_expected_commit",
-        "actual": "33e0242159aaa07b591f5db25d5484dc285a7425",
+        "actual": "169af43c840a22fccaad8838b7545232704ccc7d",
         "operator": "matches",
-        "threshold": "33e0242159aaa07b591f5db25d5484dc285a7425",
+        "threshold": "169af43c840a22fccaad8838b7545232704ccc7d",
         "passed": True,
     } in report["benchmark_rows"]
     assert report["charts"][CHART_KEY_ACTUAL_VS_THRESHOLD][0]["label"] == (

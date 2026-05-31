@@ -33,7 +33,7 @@ def test_colab_notebook_can_clone_pushed_branch_without_source_bundle() -> None:
     assert "GP4_WS_REPO_URL = os.environ.get('GP4_WS_REPO_URL'" in setup_source
     assert "GP4_WS_BRANCH = os.environ.get('GP4_WS_BRANCH', 'ws-deep-rebuild-3526')" in setup_source
     assert "GP4_WS_EXPECTED_COMMIT" in setup_source
-    assert "GP4_WS_EXPECTED_COMMIT', '33e0242159aaa07b591f5db25d5484dc285a7425'" in setup_source
+    assert "GP4_WS_EXPECTED_COMMIT', '169af43c840a22fccaad8838b7545232704ccc7d'" in setup_source
     assert "if not GP4_WS_EXPECTED_COMMIT:" in setup_source
     assert "GP4_WS_EXPECTED_COMMIT is required" in setup_source
     assert "len(GP4_WS_EXPECTED_COMMIT) < 12" in setup_source
