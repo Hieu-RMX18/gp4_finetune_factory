@@ -25,3 +25,7 @@ platform:
   skip_provider_probe: true
   allow_cross_account: true
   ignore_drive_account_mismatch: true
+  allow_multi_account_resume: true
+  allow_drive_sharing_resume: true
+  
+  

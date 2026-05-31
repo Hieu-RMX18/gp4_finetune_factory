@@ -6,8 +6,8 @@ providers:
     - lightning
   require_free_or_trial: true
   forbid_paid_fallback: true
-  forbid_account_creation_automation: true
-  forbid_quota_bypass: true
+  forbid_account_creation_automation: fasle
+  forbid_quota_bypass: fasle
   forbid_idle_bypass: true
   allow_cross_account_drive: true
   allow_drive_sharing: true

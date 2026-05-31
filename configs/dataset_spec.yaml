@@ -77,10 +77,11 @@ allowed_error_codes:
 
 training:
   primary_platform: colab
-  free_gpu_only_until_approved: false
+  free_gpu_only_until_approved: false      # 
   large_generation_requires_approval: false
-  allow_multi_account_resume: true
-  allow_drive_sharing_resume: true
+  allow_multi_account_resume: true         # 
+  allow_drive_sharing_resume: true         # 
+  allow_cross_account: true                # 
   lora:
     load_in_4bit: true
     r: 32
