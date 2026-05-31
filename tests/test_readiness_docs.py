@@ -39,6 +39,8 @@ def test_readme_documents_v2_300k_workflow_and_local_readiness() -> None:
     assert "contract_manifest_sha256" in text
     assert "adapter_total_bytes" in text
     assert "drive_account_matches" in text
+    assert "runtime_account_confirmed" in text
+    assert "cross_account_runner" in text
     assert "old_rows_kept" in text
     assert "raw_candidate_rows_requested" in text
     assert "adapter-only reuse" in text
@@ -58,6 +60,8 @@ def test_readme_documents_v2_300k_workflow_and_local_readiness() -> None:
     assert "python3 -m pip install -r requirements.txt" not in text
     assert "Kaggle-backed storage" not in text
     assert "Google Drive" in text
+    assert "GP4_STORAGE_OWNER_EMAIL" in text
+    assert "GP4_RUNTIME_GOOGLE_ACCOUNT_CONFIRMED" in text
     assert "contract_snapshots/gp4_ws_ws-deep-rebuild-3526" in text
     assert "strict `GP4_WS` contract snapshot" in text
     assert "GP4_WS_EXPECTED_COMMIT" in text
@@ -98,6 +102,8 @@ def test_local_install_readiness_doc_exists() -> None:
     assert "contract_manifest_sha256" in text
     assert "adapter_total_bytes" in text
     assert "drive_account_matches" in text
+    assert "runtime_account_confirmed" in text
+    assert "cross_account_runner" in text
     assert "old_rows_kept" in text
     assert "raw_candidate_rows_requested" in text
     assert "adapter_aggregate_sha256" in text
@@ -113,6 +119,10 @@ def test_colab_v2_300k_runbook_pins_drive_reuse_and_reports() -> None:
     text = (ROOT / "docs/colab_v2_300k_runbook.md").read_text(encoding="utf-8")
 
     assert "johnwickiller4444@gmail.com" in text
+    assert "GP4_STORAGE_OWNER_EMAIL" in text
+    assert "GP4_RUNTIME_GOOGLE_ACCOUNT_CONFIRMED" in text
+    assert "runtime_account_confirmed" in text
+    assert "cross_account_runner" in text
     assert "/content/drive/MyDrive/gp4_finetune_factory" in text
     assert "/content/drive/MyDrive/gp4_finetune_factory/runs/<previous_run_id>" in text
     assert "/content/drive/MyDrive/gp4_finetune_factory/<previous_run_id>" not in text

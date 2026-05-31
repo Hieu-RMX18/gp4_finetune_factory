@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 from typing import Any
 
@@ -524,7 +525,7 @@ def _observed_summary(
     return {
         "drive_account": {
             "hint_path": str(cloud_root / "manifests/drive_account_hint.txt"),
-            "expected": EXPECTED_DRIVE_ACCOUNT_EMAIL,
+            "expected": _expected_drive_account_email(),
             "verified": _drive_account_hint_verified(
                 cloud_root,
                 CloudStoragePolicy((cloud_root,), allow_tmp=True),
@@ -793,7 +794,7 @@ def _drive_account_hint_verified(
         hint = hint_path.read_text(encoding="utf-8").strip()
     except OSError:
         return False
-    return hint == EXPECTED_DRIVE_ACCOUNT_EMAIL
+    return hint == _expected_drive_account_email()
 
 
 def _colab_readiness_verified(
@@ -861,9 +862,15 @@ def _colab_readiness_verified(
     return (
         report.get("passed") is True
         and drive_account.get("matches_expected") is True
-        and drive_account.get("email") == EXPECTED_DRIVE_ACCOUNT_EMAIL
+        and drive_account.get("email") == _expected_drive_account_email()
         and drive_account.get("confirmed") is True
-        and drive_account.get("confirmed_email") == EXPECTED_DRIVE_ACCOUNT_EMAIL
+        and drive_account.get("confirmed_email") == _expected_drive_account_email()
+        and str(
+            drive_account.get("storage_owner_email")
+            or drive_account.get("expected")
+            or drive_account.get("email")
+            or ""
+        ).strip() == _expected_drive_account_email()
         and old_dataset_verified
         and previous_adapter.get("exists") is True
         and previous_adapter.get("allowed_cloud_path") is True
@@ -916,6 +923,9 @@ def _observed_colab_readiness(
         "passed": report.get("passed"),
         "drive_account_matches": drive_account.get("matches_expected"),
         "drive_account_confirmed": drive_account.get("confirmed"),
+        "storage_owner_email": drive_account.get("storage_owner_email"),
+        "runtime_account_confirmed": drive_account.get("runtime_account_confirmed"),
+        "cross_account_runner": drive_account.get("cross_account_runner"),
         "old_dataset_path": old_dataset.get("path"),
         "old_dataset_rows": old_dataset.get("rows"),
         "previous_adapter_path": previous_adapter.get("path"),
@@ -1214,6 +1224,12 @@ def _cloud_file_exists(path: Path, policy: CloudStoragePolicy) -> bool:
         )
     except OSError:
         return False
+
+def _expected_drive_account_email() -> str:
+    return os.environ.get(
+        "GP4_STORAGE_OWNER_EMAIL",
+        EXPECTED_DRIVE_ACCOUNT_EMAIL,
+    ).strip() or EXPECTED_DRIVE_ACCOUNT_EMAIL
 
 def _same_path(left: Path, right: Path) -> bool:
     return left.resolve(strict=False) == right.resolve(strict=False)

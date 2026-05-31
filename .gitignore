@@ -22,3 +22,6 @@ reports/*.html
 !reports/.gitkeep
 artifact_downloads/*
 *.log
+
+# GitNexus local index/cache (large artifacts, never commit)
+.gitnexus/

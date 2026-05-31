@@ -86,12 +86,15 @@ generates the full 300k accepted-row target before training from
 `unsloth/Qwen2.5-7B-Instruct`. Do not call the run final until the full
 dataset, training, eval, package, benchmark, and completion audit gates pass.
 
-In Colab, use the Google Drive account `johnwickiller4444@gmail.com` and keep
+In Colab, keep the storage owner as `johnwickiller4444@gmail.com` and keep
 `GP4_DRIVE_ROOT=/content/drive/MyDrive/gp4_finetune_factory` unless the Drive
-folder is intentionally moved. The notebook writes a Drive account hint and
-requires an operator confirmation artifact for the same email; set
-`GP4_DRIVE_ACCOUNT_CONFIRMED=johnwickiller4444@gmail.com` only after confirming
-the mounted Drive account. To reuse a previous accepted run, set
+folder is intentionally moved. If another Google account provides the GPU runtime,
+share the Johnwick Drive folder to that account with write access, keep
+`GP4_STORAGE_OWNER_EMAIL=johnwickiller4444@gmail.com`, set
+`GP4_DRIVE_ACCOUNT_CONFIRMED=johnwickiller4444@gmail.com` after confirming the
+mounted storage root, and set `GP4_RUNTIME_GOOGLE_ACCOUNT_CONFIRMED` to the
+runtime account email. The notebook records both the storage owner and runtime
+account, while official artifacts remain under `CLOUD_ROOT`. To reuse a previous accepted run, set
 `GP4_PREVIOUS_RUN_ID=<previous_run_id>` or point `GP4_OLD_DATASET` directly at
 the prior `data/validated/accepted_300k.jsonl` file under Google Drive before
 running the notebook. Set `GP4_PREVIOUS_ADAPTER` to the prior
@@ -146,7 +149,8 @@ The benchmark report must keep provenance rows for `provider_policy_sha256`,
 `contract_manifest_sha256`, `adapter_total_bytes`, `gp4_ws_branch`,
 `gp4_ws_expected_commit`, and `gp4_ws_expected_commit_matches`. Its
 Maintenance Reference must keep `drive_account_confirmed`,
-`drive_account_matches`, `old_dataset_count`, `old_rows_kept`,
+`drive_account_matches`, `runtime_account_confirmed`, `cross_account_runner`,
+`old_dataset_count`, `old_rows_kept`,
 `new_rows_requested`, `raw_candidate_rows_requested`,
 `previous_adapter_artifact_exists`,
 `previous_run_matched`, and `adapter_aggregate_sha256` so later upgrade runs

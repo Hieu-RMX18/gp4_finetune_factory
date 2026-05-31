@@ -133,6 +133,9 @@ def write_colab_readiness_evidence(cloud_root: Path, run_id: str) -> None:
                 "expected": "johnwickiller4444@gmail.com",
                 "confirmed": True,
                 "confirmed_email": "johnwickiller4444@gmail.com",
+                "storage_owner_email": "johnwickiller4444@gmail.com",
+                "runtime_account_confirmed": "gpu.runner@example.com",
+                "cross_account_runner": True,
                 "matches_expected": True,
             },
             "gp4_ws": {
@@ -512,7 +515,8 @@ def write_benchmark_report_evidence(cloud_root: Path, run_id: str) -> None:
         "provider_policy_sha256 contract_manifest_sha256 adapter_total_bytes"
         "</table>"
         "<h2>Maintenance Reference</h2><table>"
-        "drive_account_confirmed drive_account_matches old_dataset_count old_rows_kept "
+        "drive_account_confirmed drive_account_matches runtime_account_confirmed "
+        "cross_account_runner old_dataset_count old_rows_kept "
         "new_rows_requested raw_candidate_rows_requested gp4_ws_branch gp4_ws_expected_commit "
         "gp4_ws_expected_commit_matches previous_adapter_artifact_exists previous_run_matched "
         "adapter_aggregate_sha256"
@@ -554,6 +558,8 @@ def write_benchmark_report_evidence(cloud_root: Path, run_id: str) -> None:
         "## Maintenance Reference\n\n"
         "- drive_account_confirmed: True\n"
         "- drive_account_matches: True\n"
+        "- runtime_account_confirmed: gpu.runner@example.com\n"
+        "- cross_account_runner: True\n"
         "- gp4_ws_branch: ws-deep-rebuild-3526\n"
         "- gp4_ws_expected_commit: abc1234def56\n"
         "- gp4_ws_expected_commit_matches: True\n"
@@ -1359,6 +1365,26 @@ def test_cloud_completion_audit_rejects_unconfirmed_drive_account(
     failed = {item["id"] for item in payload["checklist"] if not item["passed"]}
     assert "colab_readiness_verified" in failed
 
+def test_cloud_completion_audit_accepts_cross_account_runtime_runner(
+    tmp_path: Path,
+) -> None:
+    cloud_root = tmp_path / "cloud"
+    run_id = "cross-account-runner"
+    write_complete_cloud_evidence(cloud_root, run_id)
+
+    payload = audit_completion(
+        cloud_root=cloud_root,
+        run_id=run_id,
+        report=cloud_root / "reports" / f"completion_audit_{run_id}.json",
+        allow_tmp=True,
+        source_root=tmp_path / "source",
+    )
+
+    assert payload["passed"] is True
+    observed = payload["observed"]["colab_readiness"]
+    assert observed["runtime_account_confirmed"] == "gpu.runner@example.com"
+    assert observed["cross_account_runner"] is True
+
 
 def test_cloud_completion_audit_rejects_unapproved_provider(
     tmp_path: Path,
@@ -2057,6 +2083,8 @@ def test_cloud_completion_audit_rejects_benchmark_with_maintenance_only_in_prove
         + "\n"
         "- drive_account_confirmed: True\n"
         "- drive_account_matches: True\n"
+        "- runtime_account_confirmed: gpu.runner@example.com\n"
+        "- cross_account_runner: True\n"
         "- old_dataset_count: 1\n"
         "- old_rows_kept: 20000\n"
         "- new_rows_requested: 280000\n"

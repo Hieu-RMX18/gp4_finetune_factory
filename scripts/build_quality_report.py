@@ -319,15 +319,34 @@ def _drive_account_provenance(reports: dict[str, Any]) -> dict[str, Any]:
     hint_path = _drive_account_hint_path(report)
     confirmed = readiness_drive_account.get("confirmed") is True
     confirmed_email = str(readiness_drive_account.get("confirmed_email") or "").strip()
+    storage_owner_email = str(
+        readiness_drive_account.get("storage_owner_email")
+        or readiness_drive_account.get("expected")
+        or email
+    ).strip()
+    runtime_account_confirmed = str(
+        readiness_drive_account.get("runtime_account_confirmed")
+        or confirmed_email
+    ).strip()
+    cross_account_runner = bool(
+        readiness_drive_account.get("cross_account_runner")
+    ) or (
+        bool(runtime_account_confirmed)
+        and runtime_account_confirmed != EXPECTED_DRIVE_ACCOUNT_EMAIL
+    )
     return {
         "email": email,
         "expected": EXPECTED_DRIVE_ACCOUNT_EMAIL,
+        "storage_owner_email": storage_owner_email,
         "confirmed": confirmed,
         "confirmed_email": confirmed_email,
+        "runtime_account_confirmed": runtime_account_confirmed,
+        "cross_account_runner": cross_account_runner,
         "matches_expected": (
             email == EXPECTED_DRIVE_ACCOUNT_EMAIL
             and confirmed
             and confirmed_email == EXPECTED_DRIVE_ACCOUNT_EMAIL
+            and storage_owner_email == EXPECTED_DRIVE_ACCOUNT_EMAIL
         ),
         "hint_path": str(hint_path) if hint_path is not None else "",
         "hint_file": _file_fingerprint(hint_path) if hint_path is not None else {},
@@ -1080,6 +1099,8 @@ def _markdown_provenance_lines(provenance: Any) -> list[str]:
         f"- drive_account_expected: {drive_account.get('expected', '')}",
         f"- drive_account_confirmed: {drive_account.get('confirmed', False)}",
         f"- drive_account_confirmed_email: {drive_account.get('confirmed_email', '')}",
+        f"- runtime_account_confirmed: {drive_account.get('runtime_account_confirmed', '')}",
+        f"- cross_account_runner: {drive_account.get('cross_account_runner', False)}",
         f"- drive_account_matches: {drive_account.get('matches_expected', False)}",
         f"- gp4_ws_path: {gp4_ws.get('path', '')}",
         f"- gp4_ws_branch: {gp4_ws.get('branch', '')}",
@@ -1222,6 +1243,8 @@ def _maintenance_reference_rows(provenance: Any) -> list[dict[str, Any]]:
         {"key": "cloud_root", "value": provenance.get("cloud_root", "")},
         {"key": "drive_account_confirmed", "value": drive_account.get("confirmed", False)},
         {"key": "drive_account_matches", "value": drive_account.get("matches_expected", False)},
+        {"key": "runtime_account_confirmed", "value": drive_account.get("runtime_account_confirmed", "")},
+        {"key": "cross_account_runner", "value": drive_account.get("cross_account_runner", False)},
         {"key": "gp4_ws_branch", "value": gp4_ws.get("branch", "")},
         {
             "key": "gp4_ws_expected_commit",

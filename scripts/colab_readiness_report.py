@@ -98,14 +98,32 @@ def build_colab_readiness_report(
     )
     drive_hint_path = cloud_root / "manifests/drive_account_hint.txt"
     drive_confirmation_path = cloud_root / "manifests/drive_account_confirmation.json"
+    expected_drive_account_email = _expected_drive_account_email()
     drive_email = _read_text(drive_hint_path).strip()
     drive_confirmation = _read_optional_json(drive_confirmation_path)
     confirmed_email = str(drive_confirmation.get("confirmed_email") or "").strip()
+    storage_owner_email = str(
+        drive_confirmation.get("storage_owner_email")
+        or drive_confirmation.get("expected_email")
+        or drive_email
+    ).strip()
+    runtime_account_confirmed = str(
+        drive_confirmation.get("runtime_google_account_confirmed")
+        or drive_confirmation.get("runtime_account_confirmed")
+        or confirmed_email
+    ).strip()
     drive_account_confirmed = (
         drive_confirmation.get("confirmed") is True
-        and confirmed_email == EXPECTED_DRIVE_ACCOUNT_EMAIL
+        and confirmed_email == expected_drive_account_email
         and str(drive_confirmation.get("expected_email") or "").strip()
-        == EXPECTED_DRIVE_ACCOUNT_EMAIL
+        == expected_drive_account_email
+        and storage_owner_email == expected_drive_account_email
+    )
+    cross_account_runner = bool(
+        drive_confirmation.get("cross_account_runner")
+    ) or (
+        bool(runtime_account_confirmed)
+        and runtime_account_confirmed != expected_drive_account_email
     )
     old_dataset_exists = old_dataset.is_file() if old_dataset is not None else False
     old_dataset_rows = _jsonl_rows(old_dataset) if old_dataset_exists else 0
@@ -152,7 +170,7 @@ def build_colab_readiness_report(
         ),
         _check(
             "drive_account_hint_matches",
-            drive_email == EXPECTED_DRIVE_ACCOUNT_EMAIL,
+            drive_email == expected_drive_account_email,
             str(drive_hint_path),
         ),
         _check(
@@ -232,12 +250,15 @@ def build_colab_readiness_report(
             "hint_path": str(drive_hint_path),
             "confirmation_path": str(drive_confirmation_path),
             "email": drive_email,
+            "storage_owner_email": storage_owner_email,
             "confirmed_email": confirmed_email,
+            "runtime_account_confirmed": runtime_account_confirmed,
+            "cross_account_runner": cross_account_runner,
             "confirmed": drive_account_confirmed,
             "confirmation_method": str(drive_confirmation.get("method") or ""),
-            "expected": EXPECTED_DRIVE_ACCOUNT_EMAIL,
+            "expected": expected_drive_account_email,
             "matches_expected": (
-                drive_email == EXPECTED_DRIVE_ACCOUNT_EMAIL
+                drive_email == expected_drive_account_email
                 and drive_account_confirmed
             ),
         },
@@ -411,6 +432,12 @@ def _is_current_run_path(path: Path | None, cloud_root: Path) -> bool:
 
 def _configured_expected_commit(raw_value: str | None, *, env_name: str) -> str:
     return (raw_value or os.environ.get(env_name) or "").strip()
+
+def _expected_drive_account_email() -> str:
+    return os.environ.get(
+        "GP4_STORAGE_OWNER_EMAIL",
+        EXPECTED_DRIVE_ACCOUNT_EMAIL,
+    ).strip() or EXPECTED_DRIVE_ACCOUNT_EMAIL
 
 
 def _commit_matches(head: str, expected_commit: str) -> bool:

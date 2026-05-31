@@ -537,6 +537,9 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
                     "expected": "johnwickiller4444@gmail.com",
                     "confirmed": True,
                     "confirmed_email": "johnwickiller4444@gmail.com",
+                    "storage_owner_email": "johnwickiller4444@gmail.com",
+                    "runtime_account_confirmed": "gpu.runner@example.com",
+                    "cross_account_runner": True,
                     "matches_expected": True,
                 },
                 "gp4_ws": {
@@ -764,6 +767,8 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     assert provenance["drive_account"]["email"] == "johnwickiller4444@gmail.com"
     assert provenance["drive_account"]["confirmed"] is True
     assert provenance["drive_account"]["confirmed_email"] == "johnwickiller4444@gmail.com"
+    assert provenance["drive_account"]["runtime_account_confirmed"] == "gpu.runner@example.com"
+    assert provenance["drive_account"]["cross_account_runner"] is True
     assert provenance["gp4_ws"]["branch"] == "ws-deep-rebuild-3526"
     assert provenance["gp4_ws"]["expected_commit"] == (
         "169af43c840a22fccaad8838b7545232704ccc7d"
@@ -855,6 +860,8 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     maintenance_markdown = markdown.split("## Maintenance Reference", 1)[1]
     assert "drive_account_matches" in maintenance_markdown
     assert "drive_account_confirmed" in maintenance_markdown
+    assert "runtime_account_confirmed" in maintenance_markdown
+    assert "cross_account_runner" in maintenance_markdown
     assert "previous_adapter_artifact_exists" in maintenance_markdown
     assert "previous_run_matched" in maintenance_markdown
     assert "old_rows_kept" in maintenance_markdown
@@ -878,6 +885,8 @@ def test_build_quality_report_writes_benchmark_columns_and_chart_data(
     assert "drive_account_email: johnwickiller4444@gmail.com" in markdown
     assert "drive_account_matches: True" in markdown
     assert "drive_account_confirmed: True" in markdown
+    assert "runtime_account_confirmed: gpu.runner@example.com" in markdown
+    assert "cross_account_runner: True" in markdown
     assert "gp4_ws_branch: ws-deep-rebuild-3526" in markdown
     assert "gp4_ws_expected_commit_matches: True" in markdown
     assert "previous_adapter_path" in markdown

@@ -4,7 +4,8 @@ Use this checkpoint when resuming the v2 300k fine-tune from Colab. Do not run t
 
 ## Required Colab State
 
-- Google account: `johnwickiller4444@gmail.com`
+- Storage owner account: `johnwickiller4444@gmail.com`
+- Runtime account: `johnwickiller4444@gmail.com`, or another manually operated Google account with GPU access and Editor access to the Johnwick Drive folder
 - Drive root: `/content/drive/MyDrive/gp4_finetune_factory`
 - Source branch: `codex/gp4-react-ir-cloud-workflow`
 - Factory source commit: current pushed `codex/gp4-react-ir-cloud-workflow` branch head
@@ -47,7 +48,9 @@ variables unset and continue with the base-model start path.
 
 ```bash
 export GP4_DRIVE_ROOT=/content/drive/MyDrive/gp4_finetune_factory
+export GP4_STORAGE_OWNER_EMAIL=johnwickiller4444@gmail.com
 export GP4_DRIVE_ACCOUNT_CONFIRMED=johnwickiller4444@gmail.com
+export GP4_RUNTIME_GOOGLE_ACCOUNT_CONFIRMED=<runtime_google_account_email>
 export GP4_PREVIOUS_RUN_ID=<previous_run_id>
 export GP4_OLD_DATASET=/content/drive/MyDrive/gp4_finetune_factory/runs/<previous_run_id>/data/validated/accepted_300k.jsonl
 export GP4_PREVIOUS_ADAPTER=/content/drive/MyDrive/gp4_finetune_factory/runs/<previous_run_id>/models/qwen25_gp4_lora
@@ -56,6 +59,7 @@ export GP4_WS_EXPECTED_COMMIT=169af43c840a22fccaad8838b7545232704ccc7d
 ```
 
 The notebook rejects `GP4_OLD_DATASET`, `GP4_PREVIOUS_ADAPTER`, and `GP4_WS` when they are outside the approved Google Drive roots. It rejects clone fallback or source bundles when the factory source commit does not match `GP4_FACTORY_SOURCE_EXPECTED_COMMIT`.
+For a cross-account GPU runtime, do not move official outputs into the runtime account's separate Drive. Mount the shared Johnwick folder, keep `CLOUD_ROOT` under that folder, and use `GP4_RUNTIME_GOOGLE_ACCOUNT_CONFIRMED` only as runner provenance.
 If `GP4_FACTORY_SOURCE_EXPECTED_COMMIT` is unset, the notebook resolves the
 current pushed `codex/gp4-react-ir-cloud-workflow` branch commit and records it
 in `manifests/factory_source_revision.json`; set the explicit commit above for
@@ -82,7 +86,8 @@ The benchmark reports must include Benchmark Columns, Actual vs Threshold,
 Acceptance Gate Status, V2 Quota Failures, Scenario Tag Distribution,
 Provenance, and Maintenance Reference sections. The completion audit must pass
 before any downstream install readiness claim is accepted. The Maintenance
-Reference must include `raw_candidate_rows_requested` so future runs can compare
+Reference must include `runtime_account_confirmed`, `cross_account_runner`, and
+`raw_candidate_rows_requested` so future runs can compare runtime account continuity and
 the raw generation budget against the accepted-row target.
 `platform_status_${RUN_ID}.json` must show `gpu_required=true` and
 `gpu_available=true`; if Colab reports GPU usage limits, stop before generation

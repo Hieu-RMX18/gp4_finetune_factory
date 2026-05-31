@@ -66,6 +66,8 @@ REQUIRED_PROVENANCE_TOKENS = (
 REQUIRED_MAINTENANCE_REFERENCE_TOKENS = (
     "drive_account_confirmed",
     "drive_account_matches",
+    "runtime_account_confirmed",
+    "cross_account_runner",
     "gp4_ws_branch",
     "gp4_ws_expected_commit",
     "gp4_ws_expected_commit_matches",

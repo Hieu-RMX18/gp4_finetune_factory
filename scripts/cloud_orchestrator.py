@@ -433,7 +433,7 @@ def _run_cloud_setup(phase: str, context: dict[str, Any]) -> dict[str, Any]:
     manifest_path = cloud_root / "manifests/contract_manifest.json"
     write_json(manifest_path, manifest)
     drive_hint_path = cloud_root / "manifests/drive_account_hint.txt"
-    drive_hint_path.write_text(EXPECTED_DRIVE_ACCOUNT_EMAIL + "\n", encoding="utf-8")
+    drive_hint_path.write_text(_expected_drive_account_email() + "\n", encoding="utf-8")
     report = {
         "passed": True,
         "source_plan": str(copied.path),
@@ -449,6 +449,13 @@ def _run_cloud_setup(phase: str, context: dict[str, Any]) -> dict[str, Any]:
         allow_tmp=bool(context["allow_tmp"]),
     )
     return {"name": phase, "status": "passed", "report": str(report_path)}
+
+
+def _expected_drive_account_email() -> str:
+    return os.environ.get(
+        "GP4_STORAGE_OWNER_EMAIL",
+        EXPECTED_DRIVE_ACCOUNT_EMAIL,
+    ).strip() or EXPECTED_DRIVE_ACCOUNT_EMAIL
 
 
 def _run_cloud_provider_probe(phase: str, context: dict[str, Any]) -> dict[str, Any]:

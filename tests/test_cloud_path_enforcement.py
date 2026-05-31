@@ -110,6 +110,9 @@ def test_colab_notebook_records_expected_drive_account_and_reuses_old_dataset() 
     assert "drive_account_hint.txt" in source
     assert "drive_account_confirmation.json" in source
     assert "GP4_DRIVE_ACCOUNT_CONFIRMED" in source
+    assert "GP4_STORAGE_OWNER_EMAIL" in source
+    assert "GP4_RUNTIME_GOOGLE_ACCOUNT_CONFIRMED" in source
+    assert "runtime_google_account_confirmed" in source
     assert "--old-dataset" in source
     assert "run_checked('cloud-orchestrator', orchestrator_command)" in source
 

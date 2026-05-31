@@ -431,6 +431,8 @@ def _build_sft_config(
         kwargs["packing"] = False
     if _constructor_accepts(sft_config_cls, "dataset_text_field"):
         kwargs["dataset_text_field"] = "text"
+    if _constructor_accepts(sft_config_cls, "dataset_num_proc"):
+        kwargs["dataset_num_proc"] = 1
     if tokenizer is not None and _constructor_accepts(sft_config_cls, "eos_token"):
         kwargs["eos_token"] = getattr(tokenizer, "eos_token", None)
     if tokenizer is not None and _constructor_accepts(sft_config_cls, "pad_token"):

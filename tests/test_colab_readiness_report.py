@@ -115,6 +115,43 @@ def test_colab_readiness_report_passes_for_drive_old_dataset_and_pinned_gp4_ws(
     assert report["install_action_performed"] is False
     assert all(check["passed"] for check in report["checks"])
 
+def test_colab_readiness_report_records_cross_account_runtime_runner(
+    tmp_path: Path,
+) -> None:
+    cloud_root, old_dataset, gp4_ws, expected_commit = _cloud_inputs(tmp_path)
+    previous_adapter = _previous_adapter(cloud_root)
+    (cloud_root / "manifests/drive_account_confirmation.json").write_text(
+        json.dumps(
+            {
+                "confirmed": True,
+                "confirmed_email": "johnwickiller4444@gmail.com",
+                "expected_email": "johnwickiller4444@gmail.com",
+                "storage_owner_email": "johnwickiller4444@gmail.com",
+                "runtime_google_account_confirmed": "gpu.runner@example.com",
+                "cross_account_runner": True,
+                "method": "operator_or_explicit_requested_account_after_drive_mount",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    report = build_colab_readiness_report(
+        cloud_root=cloud_root,
+        run_id="run",
+        gp4_ws=gp4_ws,
+        old_dataset=old_dataset,
+        previous_adapter=previous_adapter,
+        expected_commit=expected_commit,
+        policy=CloudStoragePolicy((cloud_root, cloud_root.parent), allow_tmp=True),
+    )
+
+    assert report["passed"] is True
+    assert report["drive_account"]["storage_owner_email"] == "johnwickiller4444@gmail.com"
+    assert report["drive_account"]["runtime_account_confirmed"] == "gpu.runner@example.com"
+    assert report["drive_account"]["cross_account_runner"] is True
+    assert report["drive_account"]["matches_expected"] is True
+
 
 def test_colab_readiness_report_passes_for_previous_adapter_under_drive(
     tmp_path: Path,

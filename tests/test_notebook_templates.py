@@ -79,7 +79,7 @@ def test_colab_notebook_loads_optional_provider_secrets() -> None:
     assert "os.environ['OPENAI_MODEL'] = os.environ.get('OPENAI_MODEL', 'gpt-5.4')" in secret_source
 
 
-def test_colab_notebook_locks_drive_account_and_reuses_previous_accepted_dataset() -> None:
+def test_colab_notebook_records_storage_owner_and_runtime_account() -> None:
     notebook = json.loads(
         (ROOT / "notebooks/colab_gp4_react_qwen25_qlora.ipynb").read_text(
             encoding="utf-8"
@@ -88,10 +88,13 @@ def test_colab_notebook_locks_drive_account_and_reuses_previous_accepted_dataset
     setup_source = "".join(notebook["cells"][1]["source"])
     orchestrator_source = "".join(notebook["cells"][5]["source"])
 
-    assert "DRIVE_ACCOUNT_EMAIL = 'johnwickiller4444@gmail.com'" in setup_source
+    assert "STORAGE_OWNER_EMAIL = os.environ.get('GP4_STORAGE_OWNER_EMAIL'" in setup_source
+    assert "RUNTIME_GOOGLE_ACCOUNT_CONFIRMED = os.environ.get('GP4_RUNTIME_GOOGLE_ACCOUNT_CONFIRMED'" in setup_source
     assert "drive_account_hint.txt" in setup_source
     assert "drive_account_confirmation.json" in setup_source
     assert "GP4_DRIVE_ACCOUNT_CONFIRMED" in setup_source
+    assert "runtime_google_account_confirmed" in setup_source
+    assert "cross_account_runner" in setup_source
     assert "operator_or_explicit_requested_account_after_drive_mount" in setup_source
     assert "GP4_PREVIOUS_RUN_ID" in setup_source
     assert "DATASET_PREVIOUS_RUN_ID = PREVIOUS_RUN_ID" in setup_source
