@@ -36,6 +36,9 @@ so a v2 300k dataset can be paired with an older 30k/50k adapter checkpoint
 when they live in different prior runs. It can select the newest adapter checkpoint under
 `models/qwen25_gp4_lora/checkpoint-*` when the root adapter folder does not yet
 contain final adapter weights.
+Prior accepted dataset discovery ignores stub/incomplete `accepted_300k.jsonl`
+files unless the run has a passed `merge-accepted_<run_id>.json` with
+`output_rows >= 300000` or the JSONL file itself has at least 300,000 nonblank rows.
 It also recognizes the older Drive-root pilot adapter layout
 `/content/drive/MyDrive/gp4_finetune_factory/models/qwen25_gp4_lora_pilot`,
 including `checkpoint-*` children, as `legacy-drive-root` adapter-only reuse.

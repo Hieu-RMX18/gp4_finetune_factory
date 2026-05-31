@@ -141,6 +141,24 @@ def test_colab_notebook_locks_drive_account_and_reuses_previous_accepted_dataset
     assert "--previous-adapter" in orchestrator_source
 
 
+def test_colab_notebook_skips_incomplete_prior_accepted_dataset() -> None:
+    notebook = json.loads(
+        (ROOT / "notebooks/colab_gp4_react_qwen25_qlora.ipynb").read_text(
+            encoding="utf-8"
+        )
+    )
+    setup_source = "".join(notebook["cells"][1]["source"])
+
+    assert "def _prior_accepted_dataset_is_reusable(previous_dir):" in setup_source
+    assert "merge_report = previous_dir / 'reports' / f'merge-accepted_{previous_dir.name}.json'" in setup_source
+    assert "int(merge_payload.get('output_rows') or 0) >= 300000" in setup_source
+    assert "return _jsonl_has_min_rows(dataset_path, 300000)" in setup_source
+    assert "if not _prior_accepted_dataset_is_reusable(previous_dir):" in setup_source
+    assert setup_source.index("if not _prior_accepted_dataset_is_reusable(previous_dir):") < setup_source.index(
+        "previous_dataset_candidates.append((accepted_path.stat().st_mtime, previous_dir.name))"
+    )
+
+
 def test_colab_notebook_explains_drive_mount_consent_failure() -> None:
     notebook = json.loads(
         (ROOT / "notebooks/colab_gp4_react_qwen25_qlora.ipynb").read_text(
