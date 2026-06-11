@@ -205,6 +205,8 @@ def resolve_deepseek_config(
     dry_run: bool,
 ) -> DeepSeekConfig:
     deepseek = generation_policy["deepseek"]
+    if not deepseek.get("enabled", True):
+        raise DeepSeekProviderError("DeepSeek is disabled in policy")
     api_key_env = str(deepseek.get("api_key_env", "DEEPSEEK_API_KEY"))
     api_key = env.get(api_key_env, "")
     base_url = env.get("DEEPSEEK_BASE_URL") or str(deepseek["base_url"])
