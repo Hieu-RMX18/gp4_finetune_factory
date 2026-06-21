@@ -1436,7 +1436,7 @@ def test_train_unsloth_imports_unsloth_before_trl() -> None:
     )
 
 
-def test_train_unsloth_uses_spawn_for_dataset_tokenization(monkeypatch) -> None:
+def test_train_unsloth_uses_fork_for_dataset_tokenization(monkeypatch) -> None:
     import train_unsloth_qlora
 
     calls: list[tuple[str, bool]] = []
@@ -1452,7 +1452,7 @@ def test_train_unsloth_uses_spawn_for_dataset_tokenization(monkeypatch) -> None:
 
     train_unsloth_qlora._configure_single_process_dataset_map()
 
-    assert calls == [("spawn", True)]
+    assert calls == [("fork", True)]
 
 
 def test_train_unsloth_writes_blocked_report_for_runtime_failure(

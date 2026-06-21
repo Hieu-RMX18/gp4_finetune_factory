@@ -37,6 +37,9 @@ NON_INTERACTIVE_TRAINING_ENV = {
     "TOKENIZERS_PARALLELISM": "false",
     "BITSANDBYTES_NOWELCOME": "1",
     "TQDM_DISABLE": "1",
+    # Prevent multiprocess EOFError on Colab (FUSE + sandbox).
+    "HF_DATASETS_NUM_PROC": "1",
+    "DATASETS_MAX_NUM_PROC": "1",
 }
 
 
@@ -224,7 +227,23 @@ def _configure_tokenizer_special_tokens(tokenizer: Any) -> None:
 
 
 def _configure_single_process_dataset_map() -> None:
-    multiprocessing.set_start_method("spawn", force=True)
+    # Use 'fork' instead of 'spawn' to avoid EOFError in
+    # multiprocess.Manager() on Colab/FUSE-mounted Drive.
+    # Also patch the 'multiprocess' library (used by HF datasets)
+    # to prevent it from launching worker subprocesses that break
+    # inside the Colab sandbox.
+    try:
+        multiprocessing.set_start_method("fork", force=True)
+    except RuntimeError:
+        pass
+    try:
+        import multiprocess as _mp
+        _mp.set_start_method("fork", force=True)
+    except (ImportError, RuntimeError):
+        pass
+    # Force HF datasets to use a single process for .map() calls.
+    os.environ["HF_DATASETS_NUM_PROC"] = "1"
+    os.environ["DATASETS_MAX_NUM_PROC"] = "1"
 
 
 def _first_existing_token(
