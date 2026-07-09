@@ -6,6 +6,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.worktrees/
 
 data/generated/*
 !data/generated/.gitkeep
@@ -19,4 +20,8 @@ models/*
 reports/*.json
 reports/*.html
 !reports/.gitkeep
+artifact_downloads/*
 *.log
+
+# GitNexus local index/cache (large artifacts, never commit)
+.gitnexus/

@@ -1,0 +1,98 @@
+# Colab V2 300k Runbook
+
+Use this checkpoint when resuming the v2 300k fine-tune from Colab. Do not run training locally.
+
+## Required Colab State
+
+- Storage owner account: `johnwickiller4444@gmail.com`
+- Runtime account: `johnwickiller4444@gmail.com`, or another manually operated Google account with GPU access and Editor access to the Johnwick Drive folder
+- Drive root: `/content/drive/MyDrive/gp4_finetune_factory`
+- Source branch: `codex/gp4-react-ir-cloud-workflow`
+- Factory source commit: current pushed `codex/gp4-react-ir-cloud-workflow` branch head
+- `GP4_FACTORY_SOURCE_EXPECTED_COMMIT=$(git ls-remote origin refs/heads/codex/gp4-react-ir-cloud-workflow | awk '{print $1}')`
+- `gp4_ws` branch: `ws-deep-rebuild-3526`
+- `GP4_WS_EXPECTED_COMMIT=169af43c840a22fccaad8838b7545232704ccc7d`
+
+If `drive.mount('/content/drive')` opens a Google Drive permission tab and the
+setup cell reports `Google Drive mount failed`, stop at that prompt. Approve the Google Drive permission prompt, return to the notebook, and rerun the first setup cell.
+
+## Reuse Inputs
+
+Set `GP4_PREVIOUS_RUN_ID`, or set explicit Drive paths before running the
+notebook. The normal reuse path uses both
+`GP4_OLD_DATASET=/content/drive/MyDrive/gp4_finetune_factory/runs/<previous_run_id>/data/validated/accepted_300k.jsonl` and
+`GP4_PREVIOUS_ADAPTER=/content/drive/MyDrive/gp4_finetune_factory/runs/<previous_run_id>/models/qwen25_gp4_lora`. If no old dataset
+is available, adapter-only reuse is allowed when `GP4_PREVIOUS_ADAPTER` points
+at a prior Drive adapter; that mode generates the full 300k accepted-row target from new rows and keeps `old_rows_kept=0`.
+If no prior dataset or adapter is available, use a base-model start: leave `GP4_OLD_DATASET` and `GP4_PREVIOUS_ADAPTER` unset.
+The readiness report records base-model-start evidence, and the orchestrator imports no old rows before
+generating the full 300k accepted-row target.
+When Drive already has a prior 300k accepted dataset but the reusable adapter is
+from a different prior run, the notebook uses explicit mixed-prior-artifacts
+readiness. Current-run datasets or adapters are still rejected.
+
+If all three reuse inputs are unset, the Colab notebook scans the Drive root
+for the newest prior accepted dataset and newest prior adapter independently,
+so a v2 300k dataset can be paired with an older 30k/50k adapter checkpoint
+when they live in different prior runs. It can select the newest adapter checkpoint under
+`models/qwen25_gp4_lora/checkpoint-*` when the root adapter folder does not yet
+contain final adapter weights.
+Prior accepted dataset discovery ignores stub/incomplete `accepted_300k.jsonl`
+files unless the run has a passed `merge-accepted_<run_id>.json` with
+`output_rows >= 300000` or the JSONL file itself has at least 300,000 nonblank rows.
+It also recognizes the older Drive-root pilot adapter layout
+`/content/drive/MyDrive/gp4_finetune_factory/models/qwen25_gp4_lora_pilot`,
+including `checkpoint-*` children, as `legacy-drive-root` adapter-only reuse.
+If the scan finds no valid prior dataset or adapter, keep the reuse environment
+variables unset and continue with the base-model start path.
+
+```bash
+export GP4_DRIVE_ROOT=/content/drive/MyDrive/gp4_finetune_factory
+export GP4_STORAGE_OWNER_EMAIL=johnwickiller4444@gmail.com
+export GP4_DRIVE_ACCOUNT_CONFIRMED=johnwickiller4444@gmail.com
+export GP4_RUNTIME_GOOGLE_ACCOUNT_CONFIRMED=<runtime_google_account_email>
+export GP4_PREVIOUS_RUN_ID=<previous_run_id>
+export GP4_OLD_DATASET=/content/drive/MyDrive/gp4_finetune_factory/runs/<previous_run_id>/data/validated/accepted_300k.jsonl
+export GP4_PREVIOUS_ADAPTER=/content/drive/MyDrive/gp4_finetune_factory/runs/<previous_run_id>/models/qwen25_gp4_lora
+export GP4_FACTORY_SOURCE_EXPECTED_COMMIT=$(git ls-remote origin refs/heads/codex/gp4-react-ir-cloud-workflow | awk '{print $1}')
+export GP4_WS_EXPECTED_COMMIT=169af43c840a22fccaad8838b7545232704ccc7d
+```
+
+The notebook rejects `GP4_OLD_DATASET`, `GP4_PREVIOUS_ADAPTER`, and `GP4_WS` when they are outside the approved Google Drive roots. It rejects clone fallback or source bundles when the factory source commit does not match `GP4_FACTORY_SOURCE_EXPECTED_COMMIT`.
+For a cross-account GPU runtime, do not move official outputs into the runtime account's separate Drive. Mount the shared Johnwick folder, keep `CLOUD_ROOT` under that folder, and use `GP4_RUNTIME_GOOGLE_ACCOUNT_CONFIRMED` only as runner provenance.
+If `GP4_FACTORY_SOURCE_EXPECTED_COMMIT` is unset, the notebook resolves the
+current pushed `codex/gp4-react-ir-cloud-workflow` branch commit and records it
+in `manifests/factory_source_revision.json`; set the explicit commit above for
+fully reproducible reruns.
+
+## Expected Evidence
+
+After Run All, keep these files under `$CLOUD_ROOT/reports/`:
+
+- `colab_readiness_${RUN_ID}.json`
+- `platform_status_${RUN_ID}.json`
+- `acceptance_gate_report_${RUN_ID}.json`
+- `local-install-manifest_${RUN_ID}.json`
+- `benchmark_report_${RUN_ID}.html`
+- `benchmark_report_${RUN_ID}.md`
+- `benchmark-report_${RUN_ID}.json`
+- `completion_audit_${RUN_ID}.json`
+
+The executed notebook source is also copied to
+`$CLOUD_ROOT/notebooks/colab_gp4_react_qwen25_qlora.ipynb`, with copy metadata in
+`$CLOUD_ROOT/manifests/colab_notebook_copy.json`.
+
+The benchmark reports must include Benchmark Columns, Actual vs Threshold,
+Acceptance Gate Status, V2 Quota Failures, Scenario Tag Distribution,
+Provenance, and Maintenance Reference sections. The completion audit must pass
+before any downstream install readiness claim is accepted. The Maintenance
+Reference must include `runtime_account_confirmed`, `cross_account_runner`, and
+`raw_candidate_rows_requested` so future runs can compare runtime account continuity and
+the raw generation budget against the accepted-row target.
+`platform_status_${RUN_ID}.json` must show `gpu_required=true` and
+`gpu_available=true`; if Colab reports GPU usage limits, stop before generation
+or training and retry only after Colab can allocate a GPU.
+If a notebook subprocess fails, inspect `<label>_failure_${RUN_ID}.json` under
+`$CLOUD_ROOT/reports/`; it records the command, return code, and stdout/stderr tails.
+`local-install-manifest_${RUN_ID}.json` is a Drive-stored readiness artifact, not a local install action.
+This runbook produces cloud readiness evidence only and does not perform a local adapter install.

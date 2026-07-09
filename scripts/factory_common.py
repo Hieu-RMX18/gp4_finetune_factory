@@ -2,28 +2,35 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import yaml
 
+from path_config import resolve_gp4_ws
 
-DEFAULT_GP4_WS = Path("/home/hieu2/gp4_ws")
+
+ROOT = Path(__file__).resolve().parents[1]
+SEMANTIC_SCHEMA_PATH = ROOT / "schemas/semantic_ir.schema.json"
 SEMANTIC_IR_SYSTEM_PROMPT = (
     "You generate JSON-only GP4 Semantic IR for the ROS2 + LLM HMI safety path. "
     "Return exactly one JSON object as assistant content. Normal outputs use an "
     "intent field and never primitive_type. Allowed top-level normal intents are "
     "go_home, stop, alarm_reset, get_pose, set_speed, wait, move_relative, "
     "absolute_move_ptp, move_named_pose, absolute_move_lin, circular_move, "
-    "move_joint, move_joints, io_set, draw_shape, draw_text, sequence. "
+    "move_joint, move_joint_delta, move_joints, io_set, draw_shape, draw_text, "
+    "sequence. "
     "Use return_to_start only inside sequence steps. Use set_speed with "
     "velocity_scale for speed commands. Use draw_shape with shape circle for "
     "circle requests; never invent aliases such as set_speed_scale or draw_circle. "
-    "Unsafe, ambiguous, unknown IO, or D435i perception-dependent requests must "
-    "use a safe error object."
+    "When verified ROS2/MoveIt2 vision context provides object pose, color, shape, "
+    "name, confidence, and planning-scene status, produce a safe task-planner "
+    "Semantic IR action. Unsafe, ambiguous, unknown IO, or unverified or "
+    "low-confidence D435i perception-dependent requests must use a safe error object."
 )
 ALLOWED_ERROR_CODES = {
     "MISSING_SLOT",
@@ -40,6 +47,11 @@ FORBIDDEN_KEYS = {
     "ros_topic",
     "ros_service",
     "motoros2_call",
+    "tool_name",
+    "command",
+    "shell_command",
+    "os_command",
+    "subprocess",
 }
 FORBIDDEN_TEXT_PATTERNS = {
     "hardware execution claim": [
@@ -47,11 +59,16 @@ FORBIDDEN_TEXT_PATTERNS = {
         r"\bexecuted the robot\b",
         r"\bmotion executed\b",
         r"\bsent (it )?to (the )?robot\b",
+        r"\bi sent the command\b",
+        r"\brobot moved\b",
+        r"\bexecution complete\b",
         r"đã thực hiện",
         r"đã chạy robot",
     ],
     "raw trajectory output": [
+        r"\bfollowjointtrajectory\b",
         r"joint_trajectory",
+        r"\bqueue_traj_point\b",
         r"trajectory_msgs",
         r"raw trajectory",
     ],
@@ -59,13 +76,28 @@ FORBIDDEN_TEXT_PATTERNS = {
         r"\bros2 topic pub\b",
         r"\bros2 service call\b",
         r"\bmotoros2\b",
+        r"/execute_motion",
+        r"/hw_adapter/dispatch_trajectory",
         r"/yaskawa/",
     ],
     "safety bypass language": [
         r"bypass /validate_command",
+        r"bypass safety",
         r"skip safety",
         r"disable safety",
+        r"disable collision",
+        r"ignore limits",
         r"safety bypass accepted",
+    ],
+    "dangerous OS command": [
+        r"\brm\s+-rf\s+/",
+        r"\bcurl\b[^|]{0,200}\|\s*(?:sh|bash)\b",
+        r"\bwget\b[^|]{0,200}\|\s*(?:sh|bash)\b",
+        r"\bsudo\s+systemctl\s+(?:disable|stop)\b",
+        r"\bmkfs(?:\.[a-z0-9]+)?\b",
+        r"\bdd\s+if=.*\bof=/dev/",
+        r"\bshutdown\s+(?:-h|-r|now)\b",
+        r"\breboot\b",
     ],
 }
 
@@ -141,9 +173,35 @@ def git_value(repo: Path, *args: str) -> str:
         return ""
     return result.stdout.strip()
 
+def git_has_real_changes(repo: Path) -> bool:
+    if _git_quiet(repo, "diff", "--quiet") != 0:
+        return True
+    if _git_quiet(repo, "diff", "--cached", "--quiet") != 0:
+        return True
+    return bool(git_value(repo, "ls-files", "--others", "--exclude-standard"))
 
-def load_repo_contract(repo: Path = DEFAULT_GP4_WS) -> dict[str, Any]:
-    repo = repo.resolve()
+def _git_quiet(repo: Path, *args: str) -> int:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).returncode
+
+
+def resolve_contract_repo(
+    repo: Path | str | None = None,
+    *,
+    env: Mapping[str, str] = os.environ,
+) -> Path:
+    return resolve_gp4_ws(
+        cli_value=str(repo) if repo is not None else None,
+        env=env,
+    )
+
+
+def load_repo_contract(repo: Path | str | None = None) -> dict[str, Any]:
+    repo = resolve_contract_repo(repo)
     schema_path = repo / "src/llm_gateway/config/llm_schema.yaml"
     react_path = repo / "src/llm_gateway/llm_gateway/react_planner.py"
     semantic_contract_path = (
@@ -166,7 +224,7 @@ def load_repo_contract(repo: Path = DEFAULT_GP4_WS) -> dict[str, Any]:
         "repo_path": str(repo),
         "branch": git_value(repo, "branch", "--show-current"),
         "head": git_value(repo, "rev-parse", "--short", "HEAD"),
-        "is_dirty": bool(git_value(repo, "status", "--short")),
+        "is_dirty": git_has_real_changes(repo),
         "schema_primitives": sorted(
             llm_schema["properties"]["primitive_type"]["enum"]
         ),
@@ -190,6 +248,32 @@ def load_repo_contract(repo: Path = DEFAULT_GP4_WS) -> dict[str, Any]:
         },
     }
 
+
+def load_bundled_contract() -> dict[str, Any]:
+    semantic_schema = read_json(SEMANTIC_SCHEMA_PATH)
+    properties = semantic_schema.get("properties", {})
+    top_level_intents = sorted(properties.get("intent", {}).get("enum", []))
+    semantic_intents = sorted(
+        intent for intent in top_level_intents if intent != "sequence"
+    )
+    error_codes = sorted(properties.get("error", {}).get("enum", ALLOWED_ERROR_CODES))
+    return {
+        "repo_path": str(ROOT),
+        "branch": "",
+        "head": "",
+        "is_dirty": False,
+        "schema_primitives": [],
+        "cpp_primitives": [],
+        "semantic_intents": semantic_intents,
+        "top_level_output_intents": top_level_intents,
+        "contract_gate_intents": top_level_intents,
+        "normal_output_forbids_primitive_type": True,
+        "allowed_error_codes": error_codes,
+        "safety": {},
+        "source_files": {
+            "semantic_ir_schema": str(SEMANTIC_SCHEMA_PATH),
+        },
+    }
 
 def parse_single_json_object(text: str) -> dict[str, Any]:
     if not isinstance(text, str) or not text.strip():

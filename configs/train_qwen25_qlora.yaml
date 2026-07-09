@@ -1,0 +1,31 @@
+base_model: unsloth/Qwen2.5-7B-Instruct
+method: unsloth_qlora_4bit
+lora:
+  r: 32
+  alpha: 64
+  dropout: 0
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+training:
+  max_seq_length: 2048
+  effective_batch_size: 16
+  epochs_first_pass: 1
+  checkpoint_steps: 250
+storage:
+  checkpoints: cloud_only
+  adapter: cloud_only
+  reports: cloud_only
+platform:
+  skip_provider_probe: true
+  allow_cross_account: true
+  ignore_drive_account_mismatch: true
+  allow_multi_account_resume: true
+  allow_drive_sharing_resume: true
+  
+  

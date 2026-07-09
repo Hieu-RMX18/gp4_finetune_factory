@@ -1,0 +1,10 @@
+batch_id: batch_{index:05d}
+target_count: 50
+coverage:
+  languages: [vi, en, mixed]
+  include_typos: true
+  include_hard_negatives: true
+  include_unresolved_vision: true
+  include_unknown_io: true
+reject_feedback:
+  previous_reject_reasons: []

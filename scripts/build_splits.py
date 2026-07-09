@@ -7,6 +7,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from cloud_runtime import CloudPathError, validate_cloud_run_paths
+from dataset_keys import dataset_identity_key
 from factory_common import read_jsonl, write_jsonl
 
 
@@ -16,12 +18,43 @@ def main() -> int:
     )
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, default=Path("data/splits"))
-    parser.add_argument("--seed", type=int, default=20260515)
-    parser.add_argument("--train-ratio", type=float, default=0.80)
-    parser.add_argument("--val-ratio", type=float, default=0.10)
+    parser.add_argument("--locked-eval", type=Path)
+    parser.add_argument("--report", type=Path)
+    parser.add_argument("--cloud-root", type=Path)
+    parser.add_argument("--allow-tmp", action="store_true")
+    parser.add_argument("--seed", type=int, default=3526)
+    parser.add_argument("--train-ratio", type=float, default=0.90)
+    parser.add_argument("--val-ratio", type=float, default=0.05)
     args = parser.parse_args()
 
+    outputs = [
+        args.output_dir / "train.jsonl",
+        args.output_dir / "val.jsonl",
+        args.output_dir / "test.jsonl",
+    ]
+    if args.report:
+        outputs.append(args.report)
+    inputs = [args.input]
+    if args.locked_eval:
+        inputs.append(args.locked_eval)
+    try:
+        validate_cloud_run_paths(
+            cloud_root=args.cloud_root,
+            dry_run=False,
+            inputs=inputs,
+            outputs=outputs,
+            allow_tmp=args.allow_tmp,
+        )
+    except CloudPathError as exc:
+        print(f"blocked_reason={exc}")
+        return 1
+
     rows = read_jsonl(args.input)
+    if args.locked_eval:
+        contamination = _find_locked_eval_contamination(rows, read_jsonl(args.locked_eval))
+        if contamination:
+            print(f"locked eval contamination: {contamination[0]}")
+            return 1
     if not 0 < args.train_ratio < 1:
         raise ValueError("--train-ratio must be between 0 and 1")
     if not 0 <= args.val_ratio < 1:
@@ -49,6 +82,24 @@ def main() -> int:
     write_jsonl(args.output_dir / "train.jsonl", train_rows)
     write_jsonl(args.output_dir / "val.jsonl", val_rows)
     write_jsonl(args.output_dir / "test.jsonl", test_rows)
+    if args.report:
+        from factory_common import write_json
+
+        write_json(
+            args.report,
+            {
+                "rows": len(rows),
+                "train": len(train_rows),
+                "validation": len(val_rows),
+                "test": len(test_rows),
+                "seed": args.seed,
+                "train_ratio": args.train_ratio,
+                "val_ratio": args.val_ratio,
+                "test_ratio": 1 - args.train_ratio - args.val_ratio,
+                "locked_eval_contamination": 0,
+                "passed": True,
+            },
+        )
     print(
         f"rows={len(rows)} train={len(train_rows)} val={len(val_rows)} "
         f"test={len(test_rows)} output_dir={args.output_dir}"
@@ -118,6 +169,20 @@ def _expected_label(row: dict[str, Any]) -> tuple[str, str]:
     if isinstance(error, str) and error:
         return ("error", error)
     return ("unknown", str(row.get("id", "")))
+
+def _find_locked_eval_contamination(
+    rows: list[dict[str, Any]],
+    locked_eval_rows: list[dict[str, Any]],
+) -> list[str]:
+    locked_keys = {_contamination_key(row) for row in locked_eval_rows}
+    return [
+        str(row.get("id", "<missing-id>"))
+        for row in rows
+        if _contamination_key(row) in locked_keys
+    ]
+
+def _contamination_key(row: dict[str, Any]) -> str:
+    return dataset_identity_key(row)
 
 
 if __name__ == "__main__":

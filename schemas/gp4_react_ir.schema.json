@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GP4ReActIR",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "observe", "reasoning_summary", "act", "safety"],
+  "properties": {
+    "schema_version": {
+      "const": "gp4_react_ir_v1"
+    },
+    "observe": {
+      "type": "object"
+    },
+    "reasoning_summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 320
+    },
+    "act": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["intent"],
+      "properties": {
+        "intent": {
+          "type": "string",
+          "enum": [
+            "alarm_reset",
+            "absolute_move_lin",
+            "absolute_move_ptp",
+            "circular_move",
+            "draw_shape",
+            "draw_text",
+            "get_pose",
+            "go_home",
+            "io_set",
+            "move_joint",
+            "move_joint_delta",
+            "move_joints",
+            "move_named_pose",
+            "move_relative",
+            "return_to_start",
+            "safe_error",
+            "sequence",
+            "set_speed",
+            "stop",
+            "wait"
+          ]
+        },
+        "error_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["requires_validation", "hardware_execution_claim"],
+      "properties": {
+        "requires_validation": {
+          "type": "boolean"
+        },
+        "requires_planning_scene": {
+          "type": "boolean"
+        },
+        "requires_human_approval": {
+          "type": "boolean"
+        },
+        "recovery_required": {
+          "type": "boolean"
+        },
+        "scenario_tags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "singularity",
+              "wrist_flip",
+              "joint_wrap",
+              "timeout_abort_recovery",
+              "approval_required",
+              "collision_limit_edge",
+              "dangerous_os_command",
+              "unsupported_tool_hallucination",
+              "typo_noise",
+              "alias_canonicalization",
+              "vision_uncertain",
+              "normal_motion",
+              "status_query"
+            ]
+          }
+        },
+        "hardware_execution_claim": {
+          "const": false
+        }
+      }
+    }
+  }
+}

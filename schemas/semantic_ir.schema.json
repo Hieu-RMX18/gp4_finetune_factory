@@ -3,6 +3,15 @@
   "title": "GP4SemanticIRGeneratorSchema",
   "type": "object",
   "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      {"required": ["tool_name"]},
+      {"required": ["command"]},
+      {"required": ["shell_command"]},
+      {"required": ["os_command"]},
+      {"required": ["subprocess"]}
+    ]
+  },
   "properties": {
     "intent": {
       "type": "string",
@@ -19,6 +28,7 @@
         "absolute_move_lin",
         "circular_move",
         "move_joint",
+        "move_joint_delta",
         "move_joints",
         "io_set",
         "draw_shape",
@@ -43,7 +53,16 @@
     "steps": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "not": {
+          "anyOf": [
+            {"required": ["tool_name"]},
+            {"required": ["command"]},
+            {"required": ["shell_command"]},
+            {"required": ["os_command"]},
+            {"required": ["subprocess"]}
+          ]
+        }
       }
     }
   }

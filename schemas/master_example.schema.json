@@ -9,6 +9,26 @@
       "type": "string",
       "pattern": "^gp4_[a-z]{2}_[a-z0-9_]+_[0-9]{6}$"
     },
+    "instruction": {
+      "type": "string",
+      "minLength": 1
+    },
+    "robot_state": {
+      "type": "object"
+    },
+    "scene_state": {
+      "type": "object"
+    },
+    "reasoning_style": {
+      "type": "string",
+      "enum": ["react_ir"]
+    },
+    "react_trace": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
     "messages": {
       "type": "array",
       "minItems": 3,
@@ -30,6 +50,10 @@
       }
     },
     "expected_json": {
+      "type": "object",
+      "minProperties": 1
+    },
+    "react_ir": {
       "type": "object",
       "minProperties": 1
     },
@@ -75,8 +99,58 @@
         },
         "requires_perception": {
           "type": "boolean"
+        },
+        "scenario_tags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "singularity",
+              "wrist_flip",
+              "joint_wrap",
+              "timeout_abort_recovery",
+              "approval_required",
+              "collision_limit_edge",
+              "dangerous_os_command",
+              "unsupported_tool_hallucination",
+              "typo_noise",
+              "alias_canonicalization",
+              "vision_uncertain",
+              "normal_motion",
+              "status_query"
+            ]
+          }
+        },
+        "source_run_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_dataset": {
+          "type": "string",
+          "enum": ["old", "new", "seed", "locked_eval"]
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["source_dataset"],
+            "properties": {
+              "source_dataset": {
+                "const": "new"
+              }
+            }
+          },
+          "then": {
+            "required": ["scenario_tags"],
+            "properties": {
+              "scenario_tags": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

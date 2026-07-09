@@ -1,0 +1,32 @@
+deepseek:
+  enabled: false
+  base_url: https://api.deepseek.com
+  model: deepseek-v4-flash
+  api_key_env: DEEPSEEK_API_KEY
+  temperature: 0.4
+  max_tokens: 16000
+fallback_9router:
+  enabled: true
+  base_url_env: OPENAI_BASE_URL
+  model_env: OPENAI_MODEL
+  api_key_env: OPENAI_API_KEY
+  default_model: gpt-5.4
+candidate_budget:
+  multiplier_min: 1.5
+  multiplier_max: 2.0
+batch:
+  default_size: 50
+  retry_limit: 4
+  expand_from_provider: true
+typo_noise:
+  locked_eval_source: locked_typo_eval
+  vietnamese_down_variants:
+    - di xuong
+    - di xuông
+    - đi xuong
+    - đi xuông
+    - đi xung
+    - đi xogun
+    - xuốg
+    - di len
+    - đi leen
